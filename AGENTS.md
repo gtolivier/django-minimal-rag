@@ -8,6 +8,7 @@ Instructions for coding agents working in this repository. Read
 - Install: `uv sync`
 - Test: `uv run pytest`
 - Lint: `uv run ruff check` — format: `uv run ruff format`
+- Type check: `uv run --group typecheck mypy` (strict, with django-stubs)
 
 Always go through `uv run`; do not rely on an activated virtualenv.
 
@@ -28,6 +29,12 @@ Always go through `uv run`; do not rely on an activated virtualenv.
   (`django-admin startapp`, `manage.py makemigrations`, `uv init`…), use it
   instead of writing the file.
 - **Test-first:** every behavior in `src/` is introduced by a failing test.
+- **Clean code, enforced where a tool can:** ruff flags magic values in
+  comparisons (numbers and strings, outside `tests/`), complexity, naming,
+  unused arguments and commented-out code; mypy runs in strict mode, so
+  every function is annotated. A `# noqa` or `# type: ignore` must name
+  the error it silences (both tools enforce it) and come with a comment
+  saying why.
 - **Supported versions:** Python 3.11+, Django 5.2 LTS / 6.0 / 6.1. Keep the
   CI matrix in `.github/workflows/ci.yml` in sync when this changes.
 - **No `CLAUDE.md`:** this file is the single source of agent instructions.
