@@ -5,3 +5,6 @@ from typing import Protocol
 
 class Document(Protocol):
     """A document to index."""
+
+    @property
+    def text(self) -> str: ...
