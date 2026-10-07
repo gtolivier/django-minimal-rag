@@ -51,10 +51,17 @@ class Chunk:
     rank: int
 
 
-def chunk_group(documents: Sequence[Document]) -> list[Chunk]:
-    """Chunk the ``documents`` of a group."""
+def chunk_group(
+    documents: Sequence[Document],
+    *,
+    max_length: int = DEFAULT_MAX_LENGTH,
+    length: Length = len,
+) -> list[Chunk]:
+    """Chunk the ``documents`` of a group, each split by ``split_text``."""
     pieces = [
-        (document, text) for document in documents for text in split_text(document.text)
+        (document, text)
+        for document in documents
+        for text in split_text(document.text, max_length=max_length, length=length)
     ]
     return [
         Chunk(document=document, text=text, rank=rank)
