@@ -9,6 +9,7 @@ from django_minimal_rag.documents import Document
 
 PARAGRAPH_SEPARATOR = "\n\n"
 LINE_SEPARATOR = "\n"
+WINDOWS_LINE_SEPARATOR = "\r\n"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
 
@@ -26,7 +27,7 @@ def split_text(
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     _require_positive_max_length(max_length)
-    content = text.replace("\r\n", "\n").strip()
+    content = text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR).strip()
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
@@ -156,7 +157,8 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
 def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     """The longest prefix of ``text`` that fits ``limit``.
 
-    It keeps at least one character even when none fits, so cutting a word
+    The first character of ``text`` must fit ``limit``, as ``split_text``
+    checks every character does: the prefix is never empty, so cutting a word
     always moves forward.
     """
     low, high = 1, len(text)
