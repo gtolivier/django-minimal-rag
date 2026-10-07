@@ -18,6 +18,18 @@ Always go through `uv run`; do not rely on an activated virtualenv.
   the installed package, not the working directory).
 - `tests/` — pytest tests.
 
+## Test-driven development
+
+Features are built with the `/tdd:feature` skill of the
+[`tdd` plugin](https://github.com/gtolivier/agent-workflows). Its conventions
+for this repository:
+
+- **Test, lint, type-check and format commands:** those of the Commands
+  section above.
+- **Test files:** everything under `tests/` — test modules and their
+  support files (`tests/settings.py`). Nothing outside `tests/` is a test
+  file.
+
 ## Rules
 
 - **No dependency on django-model-rag.** This package indexes documents it
