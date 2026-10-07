@@ -1,6 +1,6 @@
 import pytest
 
-from django_minimal_rag.chunking import split_text
+from django_minimal_rag.chunking import chunk_group, split_text
 
 # A limit well above the length of the short texts below.
 MAX_LENGTH = 100
@@ -160,3 +160,7 @@ def test_max_length_below_1_raises_value_error() -> None:
     # producing chunks that exceed it.
     with pytest.raises(ValueError, match="max_length"):
         split_text("A short document.", max_length=0)
+
+
+def test_group_with_no_documents_gives_no_chunks() -> None:
+    assert chunk_group([]) == []
