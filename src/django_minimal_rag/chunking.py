@@ -21,6 +21,9 @@ def split_text(
     Sizes are measured by ``length``, which counts characters by default.
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
+    if max_length < 1:
+        msg = f"max_length must be at least 1, got {max_length}"
+        raise ValueError(msg)
     content = text.strip()
     if not content:
         return []
