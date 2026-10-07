@@ -3,6 +3,7 @@
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 
 from django_minimal_rag.documents import Document
 
@@ -32,17 +33,12 @@ def split_text(
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
     _require_every_character_fits(content, limit=limit)
-    chunks: list[str] = []
-    short_paragraphs: list[str] = []
-    for raw_paragraph in BLANK_LINES.split(content):
-        paragraph = raw_paragraph.strip()
-        if limit.fits(paragraph):
-            short_paragraphs.append(paragraph)
-            continue
-        chunks += _pack_paragraphs(short_paragraphs, limit=limit)
-        short_paragraphs = []
-        chunks += _split_between_lines(paragraph, limit=limit)
-    return chunks + _pack_paragraphs(short_paragraphs, limit=limit)
+    return _pack_splitting_oversized(
+        [paragraph.strip() for paragraph in BLANK_LINES.split(content)],
+        separator=PARAGRAPH_SEPARATOR,
+        limit=limit,
+        split=partial(_split_between_lines, limit=limit),
+    )
 
 
 @dataclass(frozen=True)
@@ -91,9 +87,27 @@ def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
         raise ValueError(msg)
 
 
-def _pack_paragraphs(paragraphs: list[str], *, limit: _SizeLimit) -> list[str]:
-    """Join consecutive ``paragraphs`` by blank lines while they fit ``limit``."""
-    return _pack(paragraphs, separator=PARAGRAPH_SEPARATOR, limit=limit)
+def _pack_splitting_oversized(
+    pieces: list[str],
+    *,
+    separator: str,
+    limit: _SizeLimit,
+    split: Callable[[str], list[str]],
+) -> list[str]:
+    """Pack consecutive ``pieces`` that fit ``limit``; ``split`` the others.
+
+    Packed pieces are joined with ``separator``, as by ``_pack``.
+    """
+    chunks: list[str] = []
+    fitting_pieces: list[str] = []
+    for piece in pieces:
+        if limit.fits(piece):
+            fitting_pieces.append(piece)
+            continue
+        chunks += _pack(fitting_pieces, separator=separator, limit=limit)
+        fitting_pieces = []
+        chunks += split(piece)
+    return chunks + _pack(fitting_pieces, separator=separator, limit=limit)
 
 
 def _split_between_lines(paragraph: str, *, limit: _SizeLimit) -> list[str]:
@@ -101,26 +115,20 @@ def _split_between_lines(paragraph: str, *, limit: _SizeLimit) -> list[str]:
 
     A line that does not fit ``limit`` is split between words.
     """
-    chunks: list[str] = []
-    short_lines: list[str] = []
-    for line in paragraph.split("\n"):
-        if limit.fits(line):
-            short_lines.append(line)
-            continue
-        chunks += _pack(short_lines, separator=LINE_SEPARATOR, limit=limit)
-        short_lines = []
-        chunks += _split_between_words(line, limit=limit)
-    return chunks + _pack(short_lines, separator=LINE_SEPARATOR, limit=limit)
+    return _pack_splitting_oversized(
+        paragraph.split(LINE_SEPARATOR),
+        separator=LINE_SEPARATOR,
+        limit=limit,
+        split=partial(_split_between_words, limit=limit),
+    )
 
 
-def _split_between_words(paragraph: str, *, limit: _SizeLimit) -> list[str]:
-    """Split ``paragraph`` between words into pieces that fit ``limit``.
+def _split_between_words(text: str, *, limit: _SizeLimit) -> list[str]:
+    """Split ``text`` between words into pieces that fit ``limit``.
 
     A word that does not fit ``limit`` is cut first, so it fits a piece.
     """
-    words = [
-        piece for word in paragraph.split() for piece in _cut_word(word, limit=limit)
-    ]
+    words = [piece for word in text.split() for piece in _cut_word(word, limit=limit)]
     return _pack(words, separator=WORD_SEPARATOR, limit=limit)
 
 
