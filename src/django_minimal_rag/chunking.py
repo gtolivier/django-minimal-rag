@@ -13,21 +13,24 @@ def split_text(text: str, *, max_length: int) -> list[str]:
     if not content:
         return []
     chunks: list[str] = []
-    run: list[str] = []
+    short_paragraphs: list[str] = []
     for paragraph in BLANK_LINES.split(content):
         if len(paragraph) <= max_length:
-            run.append(paragraph)
+            short_paragraphs.append(paragraph)
             continue
-        chunks += _pack(run, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
-        run = []
-        chunks += _split_paragraph(paragraph, max_length=max_length)
-    return chunks + _pack(run, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
+        chunks += _pack_paragraphs(short_paragraphs, max_length=max_length)
+        short_paragraphs = []
+        chunks += _split_between_words(paragraph, max_length=max_length)
+    return chunks + _pack_paragraphs(short_paragraphs, max_length=max_length)
 
 
-def _split_paragraph(paragraph: str, *, max_length: int) -> list[str]:
-    """Split ``paragraph`` between words if it is longer than ``max_length``."""
-    if len(paragraph) <= max_length:
-        return [paragraph]
+def _pack_paragraphs(paragraphs: list[str], *, max_length: int) -> list[str]:
+    """Join consecutive ``paragraphs`` by blank lines while they fit ``max_length``."""
+    return _pack(paragraphs, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
+
+
+def _split_between_words(paragraph: str, *, max_length: int) -> list[str]:
+    """Split ``paragraph`` between words into pieces of at most ``max_length``."""
     return _pack(paragraph.split(), separator=WORD_SEPARATOR, max_length=max_length)
 
 
