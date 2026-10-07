@@ -26,7 +26,7 @@ def split_text(
     if max_length < 1:
         msg = f"max_length must be at least 1, got {max_length}"
         raise ValueError(msg)
-    content = text.strip()
+    content = text.replace("\r\n", "\n").strip()
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
