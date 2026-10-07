@@ -12,5 +12,9 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": "django_minimal_rag",
+        "HOST": "localhost",
+        "PORT": "5433",
+        "USER": "postgres",
+        "PASSWORD": "postgres",
     },
 }
