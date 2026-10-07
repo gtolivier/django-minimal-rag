@@ -1,5 +1,6 @@
 """The document protocol: what a host project hands to this package."""
 
+from collections.abc import Set as AbstractSet
 from typing import Protocol
 
 
@@ -20,3 +21,6 @@ class Document(Protocol):
 
     @property
     def language(self) -> str | None: ...
+
+    @property
+    def permissions(self) -> AbstractSet[str]: ...
