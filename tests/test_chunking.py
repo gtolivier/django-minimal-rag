@@ -142,3 +142,12 @@ def test_word_too_long_for_length_function_is_cut_at_longest_fitting_prefix() ->
         "éc",  # 3 bytes: adding "é" would make 5
         "é",
     ]
+
+
+def test_max_length_defaults_to_1000_characters() -> None:
+    default_max_length = 1000
+    text = "a" * (default_max_length + 1)
+
+    # The longest prefix that fits holds exactly 1000 characters: 1000 fits,
+    # 1001 does not.
+    assert split_text(text) == ["a" * default_max_length, "a"]
