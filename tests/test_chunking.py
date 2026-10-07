@@ -35,3 +35,17 @@ def test_two_paragraphs_exceeding_max_length_give_one_chunk_per_paragraph() -> N
     assert len(text) > max_length
 
     assert split_text(text, max_length=max_length) == [first, second]
+
+
+def test_consecutive_paragraphs_are_packed_into_one_chunk_while_they_fit() -> None:
+    first = "First paragraph."
+    second = "Second paragraph."
+    third = "Third paragraph."
+    first_two = f"{first}\n\n{second}"
+    text = f"{first_two}\n\n{third}"
+    max_length = 40
+    assert len(first_two) <= max_length
+    assert len(third) <= max_length
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == [first_two, third]
