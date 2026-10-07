@@ -11,7 +11,25 @@ def split_text(text: str, *, max_length: int) -> list[str]:
     content = text.strip()
     if not content:
         return []
-    return _pack_paragraphs(BLANK_LINES.split(content), max_length=max_length)
+    chunks: list[str] = []
+    for paragraph in BLANK_LINES.split(content):
+        if len(paragraph) > max_length:
+            chunks.extend(_pack_words(paragraph.split(), max_length=max_length))
+        else:
+            chunks.append(paragraph)
+    return _pack_paragraphs(chunks, max_length=max_length)
+
+
+def _pack_words(words: list[str], *, max_length: int) -> list[str]:
+    """Join consecutive ``words`` with one space while they fit in ``max_length``."""
+    chunks = words[:1]
+    for word in words[1:]:
+        candidate = chunks[-1] + " " + word
+        if len(candidate) <= max_length:
+            chunks[-1] = candidate
+        else:
+            chunks.append(word)
+    return chunks
 
 
 def _pack_paragraphs(paragraphs: list[str], *, max_length: int) -> list[str]:
