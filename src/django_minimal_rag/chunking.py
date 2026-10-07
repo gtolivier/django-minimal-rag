@@ -1,8 +1,10 @@
 """Splitting text into chunks."""
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+
+from django_minimal_rag.documents import Document
 
 PARAGRAPH_SEPARATOR = "\n\n"
 WORD_SEPARATOR = " "
@@ -38,6 +40,11 @@ def split_text(
         short_paragraphs = []
         chunks += _split_between_words(paragraph, limit=limit)
     return chunks + _pack_paragraphs(short_paragraphs, limit=limit)
+
+
+def chunk_group(documents: Sequence[Document]) -> list[str]:
+    """Chunk the ``documents`` of a group."""
+    return [chunk for document in documents for chunk in split_text(document.text)]
 
 
 @dataclass(frozen=True)
