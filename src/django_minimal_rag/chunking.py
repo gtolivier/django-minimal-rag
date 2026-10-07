@@ -104,7 +104,7 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
     while rest:
         piece = _longest_fitting_prefix(rest, limit=limit)
         pieces.append(piece)
-        rest = rest.removeprefix(piece)
+        rest = rest[len(piece) :]
     return pieces
 
 
