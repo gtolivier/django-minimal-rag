@@ -139,100 +139,36 @@ def test_class_with_read_only_members_is_a_document() -> None:
     assert document is read_only
 
 
-def test_class_without_text_is_not_a_document() -> None:
-    without_text = DocumentWithoutText(
-        source_key=SOURCE_KEY,
-        title=TITLE,
-        url=URL,
-        language=LANGUAGE,
-        permissions=PERMISSIONS,
-    )
-
-    # The rejection is the behavior under test: mypy must refuse this
-    # assignment, and strict mypy reports the ignore as unused if it does not.
-    document: Document = without_text  # type: ignore[assignment]
-
-    assert not hasattr(document, "text")
+# A class missing any one member is not a document. That is a static
+# behavior, so it is checked by mypy alone: the functions below are never
+# called, and pytest does not collect them (their names do not start with
+# `test_`). Each returns its argument where a `Document` is expected; mypy
+# must refuse that return, and strict mypy reports the ignore as unused if
+# it does not, which fails the type check.
 
 
-def test_class_without_source_key_is_not_a_document() -> None:
-    without_source_key = DocumentWithoutSourceKey(
-        text=TEXT,
-        title=TITLE,
-        url=URL,
-        language=LANGUAGE,
-        permissions=PERMISSIONS,
-    )
-
-    # The rejection is the behavior under test: mypy must refuse this
-    # assignment, and strict mypy reports the ignore as unused if it does not.
-    document: Document = without_source_key  # type: ignore[assignment]
-
-    assert not hasattr(document, "source_key")
+def _rejects_without_text(document: DocumentWithoutText) -> Document:
+    return document  # type: ignore[return-value]  # no `text`: not a Document
 
 
-def test_class_without_title_is_not_a_document() -> None:
-    without_title = DocumentWithoutTitle(
-        text=TEXT,
-        source_key=SOURCE_KEY,
-        url=URL,
-        language=LANGUAGE,
-        permissions=PERMISSIONS,
-    )
-
-    # The rejection is the behavior under test: mypy must refuse this
-    # assignment, and strict mypy reports the ignore as unused if it does not.
-    document: Document = without_title  # type: ignore[assignment]
-
-    assert not hasattr(document, "title")
+def _rejects_without_source_key(document: DocumentWithoutSourceKey) -> Document:
+    return document  # type: ignore[return-value]  # no `source_key`: not a Document
 
 
-def test_class_without_url_is_not_a_document() -> None:
-    without_url = DocumentWithoutUrl(
-        text=TEXT,
-        source_key=SOURCE_KEY,
-        title=TITLE,
-        language=LANGUAGE,
-        permissions=PERMISSIONS,
-    )
-
-    # The rejection is the behavior under test: mypy must refuse this
-    # assignment, and strict mypy reports the ignore as unused if it does not.
-    document: Document = without_url  # type: ignore[assignment]
-
-    assert not hasattr(document, "url")
+def _rejects_without_title(document: DocumentWithoutTitle) -> Document:
+    return document  # type: ignore[return-value]  # no `title`: not a Document
 
 
-def test_class_without_language_is_not_a_document() -> None:
-    without_language = DocumentWithoutLanguage(
-        text=TEXT,
-        source_key=SOURCE_KEY,
-        title=TITLE,
-        url=URL,
-        permissions=PERMISSIONS,
-    )
-
-    # The rejection is the behavior under test: mypy must refuse this
-    # assignment, and strict mypy reports the ignore as unused if it does not.
-    document: Document = without_language  # type: ignore[assignment]
-
-    assert not hasattr(document, "language")
+def _rejects_without_url(document: DocumentWithoutUrl) -> Document:
+    return document  # type: ignore[return-value]  # no `url`: not a Document
 
 
-def test_class_without_permissions_is_not_a_document() -> None:
-    without_permissions = DocumentWithoutPermissions(
-        text=TEXT,
-        source_key=SOURCE_KEY,
-        title=TITLE,
-        url=URL,
-        language=LANGUAGE,
-    )
+def _rejects_without_language(document: DocumentWithoutLanguage) -> Document:
+    return document  # type: ignore[return-value]  # no `language`: not a Document
 
-    # The rejection is the behavior under test: mypy must refuse this
-    # assignment, and strict mypy reports the ignore as unused if it does not.
-    document: Document = without_permissions  # type: ignore[assignment]
 
-    assert not hasattr(document, "permissions")
+def _rejects_without_permissions(document: DocumentWithoutPermissions) -> Document:
+    return document  # type: ignore[return-value]  # no `permissions`: not a Document
 
 
 def test_members_read_through_a_document_have_their_exact_types(
