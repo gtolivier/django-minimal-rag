@@ -45,6 +45,23 @@ jobs:
           - { django: "6.1", python: "3.12" }
           - { django: "6.1", python: "3.14" }
     name: test (django ${{ matrix.django }}, python ${{ matrix.python }})
+    services:
+      # PostgreSQL with pgvector, the image compose.yaml uses locally.
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-retries 15
+    # Read by libpq: tests/settings.py leaves the connection to them.
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0

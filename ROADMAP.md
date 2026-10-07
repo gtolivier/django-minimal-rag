@@ -174,7 +174,7 @@ To settle in the design pass, before feature 1.
 
 Provisional: the design pass may reorder, split or merge them.
 
-- [ ] **0. Test bench.** pytest-django, test settings using PostgreSQL with
+- [x] **0. Test bench.** pytest-django, test settings using PostgreSQL with
   pgvector, and a PostgreSQL service in CI.
 - [ ] **1. The document Protocol.** Checked by a document class of the test
   bench, without django-model-rag.
