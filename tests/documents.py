@@ -14,3 +14,15 @@ class SampleDocument:
     url: str
     language: str | None
     permissions: AbstractSet[str]
+
+
+@dataclass
+class MutableDocument:
+    """A document a host project may define as a plain dataclass: unhashable."""
+
+    text: str
+    source_key: str
+    title: str
+    url: str
+    language: str | None
+    permissions: AbstractSet[str]

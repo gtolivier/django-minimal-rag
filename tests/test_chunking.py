@@ -1,7 +1,7 @@
 import pytest
 
 from django_minimal_rag.chunking import Chunk, chunk_group, split_text
-from tests.documents import SampleDocument
+from tests.documents import MutableDocument, SampleDocument
 
 # A limit well above the length of the short texts below.
 MAX_LENGTH = 100
@@ -340,3 +340,19 @@ def test_max_length_and_length_are_applied_to_every_document_of_the_group() -> N
         (second, "delta epsilon", 2),
         (second, "zeta theta", 3),
     ]
+
+
+def test_chunk_of_an_unhashable_document_can_be_hashed() -> None:
+    document = MutableDocument(
+        text="A note.",
+        source_key="app.note:1",
+        title="A note",
+        url="https://example.com/notes/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+    # A non-frozen dataclass sets __hash__ to None: the document is unhashable.
+    assert MutableDocument.__hash__ is None
+    chunk = Chunk(document=document, text="A note.", rank=0)
+
+    assert chunk in {chunk}
