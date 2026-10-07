@@ -19,7 +19,7 @@ def split_text(
     """Split ``text`` into chunks measuring at most ``max_length``.
 
     Sizes are measured by ``length``, which counts characters by default.
-    ``max_length`` defaults to 1000.
+    ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     content = text.strip()
     if not content:
