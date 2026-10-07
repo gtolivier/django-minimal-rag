@@ -177,6 +177,25 @@ def test_character_measuring_more_than_max_length_raises_value_error() -> None:
         split_text("abc", max_length=max_length, length=count_one_more_than_characters)
 
 
+def test_cutting_a_long_word_calls_length_a_bounded_number_of_times() -> None:
+    word = "a" * 10_000
+    max_length = 100
+    max_calls = 2_500
+    calls = 0
+
+    def recording_len(text: str) -> int:
+        nonlocal calls
+        calls += 1
+        return len(text)
+
+    # The word has no space: it is cut into 100 pieces, and measuring every
+    # candidate prefix from the end of the word would take far more calls.
+    chunks = split_text(word, max_length=max_length, length=recording_len)
+
+    assert chunks == ["a" * max_length] * (len(word) // max_length)
+    assert calls <= max_calls
+
+
 def note(number: int, *, title: str, text: str) -> SampleDocument:
     """Note ``number`` of the host project, in English and public."""
     return SampleDocument(
