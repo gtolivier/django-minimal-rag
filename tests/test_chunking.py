@@ -1,3 +1,5 @@
+import pytest
+
 from django_minimal_rag.chunking import split_text
 
 # A limit well above the length of the short texts below.
@@ -151,3 +153,10 @@ def test_max_length_defaults_to_1000_characters() -> None:
     # The longest prefix that fits holds exactly 1000 characters: 1000 fits,
     # 1001 does not.
     assert split_text(text) == ["a" * default_max_length, "a"]
+
+
+def test_max_length_below_1_raises_value_error() -> None:
+    # No chunk could fit a limit of 0: the call is refused rather than
+    # producing chunks that exceed it.
+    with pytest.raises(ValueError, match="max_length"):
+        split_text("A short document.", max_length=0)
