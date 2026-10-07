@@ -30,13 +30,23 @@ def _pack_paragraphs(paragraphs: list[str], *, max_length: int) -> list[str]:
 
 
 def _split_between_words(paragraph: str, *, max_length: int) -> list[str]:
-    """Split ``paragraph`` between words into pieces of at most ``max_length``."""
+    """Split ``paragraph`` between words into pieces of at most ``max_length``.
+
+    A word longer than ``max_length`` is cut first, so it fits a piece.
+    """
     words = [
-        word[start : start + max_length]
+        piece
         for word in paragraph.split()
-        for start in range(0, len(word), max_length)
+        for piece in _cut_word(word, max_length=max_length)
     ]
     return _pack(words, separator=WORD_SEPARATOR, max_length=max_length)
+
+
+def _cut_word(word: str, *, max_length: int) -> list[str]:
+    """Cut ``word`` into consecutive pieces of at most ``max_length`` characters."""
+    return [
+        word[start : start + max_length] for start in range(0, len(word), max_length)
+    ]
 
 
 def _pack(pieces: list[str], *, separator: str, max_length: int) -> list[str]:
