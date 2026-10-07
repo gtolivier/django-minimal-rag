@@ -12,12 +12,16 @@ def split_text(text: str, *, max_length: int) -> list[str]:
     content = text.strip()
     if not content:
         return []
-    pieces = [
-        piece
-        for paragraph in BLANK_LINES.split(content)
-        for piece in _split_paragraph(paragraph, max_length=max_length)
-    ]
-    return _pack(pieces, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
+    chunks: list[str] = []
+    run: list[str] = []
+    for paragraph in BLANK_LINES.split(content):
+        if len(paragraph) <= max_length:
+            run.append(paragraph)
+            continue
+        chunks += _pack(run, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
+        run = []
+        chunks += _split_paragraph(paragraph, max_length=max_length)
+    return chunks + _pack(run, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
 
 
 def _split_paragraph(paragraph: str, *, max_length: int) -> list[str]:
