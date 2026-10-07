@@ -33,7 +33,7 @@ flowchart LR
 
     models --> extract
     extract -- "documents grouped by source_key" --> setting
-    setting -- "dotted path to the output" --> output
+    setting -- "BACKEND(**OPTIONS)" --> output
     other -- "same document shape" --> output
     user -- "question" --> answer
     answer -- "answer with citations" --> user
@@ -43,7 +43,8 @@ django-minimal-rag never imports django-model-rag, and django-model-rag
 never imports it: the host project connects them, by naming
 django-minimal-rag's output in its settings.
 [django-model-rag-demo](https://github.com/gtolivier/django-model-rag-demo)
-installs both and type-checks them together.
+installs both; it will type-check them together once this package's
+document Protocol exists (feature 1).
 
 Inside the package, two paths share the storage:
 
@@ -61,7 +62,7 @@ flowchart LR
     subgraph asking ["Answering — called by the project's view"]
         question["Question + user"] --> qembed["Embedding API"]
         qembed --> search["Nearest chunks<br/>the user may read"]
-        search --> threshold{"Above the<br/>relevance<br/>threshold?"}
+        search --> threshold{"Within the<br/>relevance<br/>threshold?"}
         threshold -- "none" --> nothing["No answer"]
         threshold -- "some" --> llm["LLM, answering<br/>from these chunks only"]
         llm --> cited["Answer + citations<br/>to the source pages"]
@@ -98,18 +99,26 @@ implements.
   `app.note` never matches `app.notebook:3`). The name of `prune`'s first
   argument must stay meaningful for a project that does not use
   django-model-rag.
+- **The output class is built from a setting, on every use.**
+  django-model-rag's `MODEL_RAG_OUTPUT` is a dict, `{"BACKEND": "…",
+  "OPTIONS": {…}}`, and builds `BACKEND(**OPTIONS)` anew each time the
+  command or a signal needs it. The output class therefore takes its
+  options as keyword arguments, and holds nothing costly to build (an
+  embedding client, a connection pool) per instance.
 - **`source_key` identifies a group, not a document.** Chunks are
-  identified within their group. Since every call replaces whole groups, a
+  identified within their group by their text, not by their rank, which
+  shifts on every insertion. Since every call replaces whole groups, a
   replayed call gives the same result, and comparing texts lets the package
   re-embed only what changed.
 - **Each `replace()` is applied in a transaction.** The atomicity of a batch
   belongs to this package, and so do transient errors such as a
   rate-limited embedding API, retried with backoff: the producer cannot
   tell which exceptions are transient.
-- **Answers come from the retrieved chunks only.** Chunks below a relevance
-  threshold are discarded before the LLM is called; with none left, there
+- **Answers come from the retrieved chunks only.** Chunks too far from the
+  question — past a relevance threshold — are discarded before the LLM is
+  called; with none left, there
   is no answer rather than an answer from the LLM's own knowledge. Each
-  answer cites the documents it used, by their `url`.
+  answer cites the documents it used (see "Citations", below).
 - **Extras only for optional backends.** An extra (`pip install
   django-minimal-rag[...]`) is acceptable only for a dependency that does
   not change the release cycle or the test matrix — a background-task
@@ -120,22 +129,43 @@ implements.
 
 To settle in the design pass, before feature 1.
 
-- **The document Protocol:** which members, which are optional (`title`,
-  `url`, `language`, `metadata`, `permissions`), and what an unknown
-  `language` (`None`) means — falling back on `LANGUAGE_CODE` or not.
+- **The document Protocol:** which members it declares. A Protocol has no
+  optional members: an attribute that some producers' documents lack
+  (`title`, `url`, `language`, `metadata`, `permissions`) is either required
+  of every producer, or left out of the Protocol and read with a fallback
+  the type checker cannot see — or the Protocol is split into smaller ones.
+  Also what an unknown `language` (`None`) means — falling back on
+  `LANGUAGE_CODE` or not.
+- **Citations:** how a document without a URL is cited. django-model-rag
+  gives an empty `url` (`""`) to a model with no URL source, so either the
+  Protocol requires a non-empty `url` — and such documents cannot be
+  indexed — or a citation falls back on something else, such as the title
+  or the `source_key`.
 - **Chunking:** by characters, tokens or structure (paragraphs, headings);
   size and overlap; whether the title is repeated in each chunk.
 - **Embeddings:** how a project chooses its embedding API (a setting shaped
   like `STORAGES`, as for the output?), the vector dimension that a
-  migration fixes, and what changing models means for stored vectors.
+  migration fixes — needed before feature 3 — and what changing models
+  means for stored vectors.
 - **Permission filtering:** documents carry permission names
-  (`app_label.codename`); filtering them in the vector query rather than
-  after it, so that a user never gets fewer results than allowed — or an
-  answer built from chunks they may not read.
+  (`app_label.codename`). What they mean — all of them required, an empty
+  set readable by everyone, as django-model-rag's example
+  `document.permissions <= user_permissions` suggests — and filtering them
+  in the vector query rather than after it, so that a user never gets fewer
+  results than allowed, or an answer built from chunks they may not read.
 - **Relevance threshold:** which distance (cosine, inner product), and
   whether the threshold is a setting, a per-query argument, or both.
 - **The LLM:** how a project chooses it, the prompt, the shape of a
   citation, and whether answers are streamed.
+- **Transactions and concurrency:** whether the embedding calls, and their
+  retries, run inside `replace()`'s transaction — holding locks for as long
+  as the API is rate-limited — or before it; and how two `replace()` calls
+  for the same source, from two quick saves, are kept from interleaving
+  their chunks (locking the source row, for instance).
+- **Orphaned chunks:** `replace()` and `prune()` remove what their producer
+  reports, but the chunks of a source no producer reports any more — a
+  model no longer registered, a producer that never prunes — stay
+  quotable. Whether the package offers a way to find or remove them.
 - **Synchronous or deferred indexing:** whether `replace()` embeds before
   returning, or stores the texts and leaves embedding to a background
   task (a candidate for an extra).
@@ -150,18 +180,17 @@ Provisional: the design pass may reorder, split or merge them.
   bench, without django-model-rag.
 - [ ] **2. Chunking.** A document's text split into chunks, each knowing
   its rank within its group.
-- [ ] **3. Storage.** Models for sources and chunks, with their vector
-  field and migration.
+- [ ] **3. Storage.** Models for sources and chunks, with their
+  permissions, their vector field and its migration.
 - [ ] **4. Embeddings.** The embedding backend, chosen by a setting, with a
   fake backend for tests.
 - [ ] **5. `replace()`.** Groups replaced in a transaction; empty groups
   removed; unchanged texts not re-embedded.
 - [ ] **6. `prune()`.** Sources of a model that are not kept are removed.
-- [ ] **7. Retrieval.** The nearest chunks to a question, above the
-  relevance threshold.
-- [ ] **8. Permission filtering.** Only chunks the user may read are
-  retrieved.
-- [ ] **9. Cited answers.** The LLM answers from the retrieved chunks, with
+- [ ] **7. Retrieval.** The nearest chunks to a question that the user
+  may read, within the relevance threshold. Permission filtering is part of
+  the first retrieval, never added afterwards.
+- [ ] **8. Cited answers.** The LLM answers from the retrieved chunks, with
   citations to their sources.
 
 ## Not planned here
