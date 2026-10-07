@@ -97,3 +97,11 @@ def test_pieces_of_a_split_paragraph_are_not_merged_with_its_neighbours() -> Non
         "epsilon",
         after,
     ]
+
+
+def test_word_longer_than_max_length_is_cut_into_pieces_of_max_length() -> None:
+    text = "abcdefghij"
+    max_length = 4
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == ["abcd", "efgh", "ij"]
