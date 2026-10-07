@@ -61,14 +61,16 @@ def _split_between_words(paragraph: str, *, limit: _SizeLimit) -> list[str]:
 
 
 def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
-    """Cut ``word`` into pieces of ``max_length`` characters, unless it fits."""
-    if limit.fits(word):
-        return [word]
-    piece_length = limit.max_length
-    return [
-        word[start : start + piece_length]
-        for start in range(0, len(word), piece_length)
-    ]
+    """Cut ``word`` into its longest prefixes that fit ``limit``, unless it fits."""
+    pieces: list[str] = []
+    rest = word
+    while rest:
+        end = len(rest)
+        while end > 1 and not limit.fits(rest[:end]):
+            end -= 1
+        pieces.append(rest[:end])
+        rest = rest[end:]
+    return pieces
 
 
 def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
