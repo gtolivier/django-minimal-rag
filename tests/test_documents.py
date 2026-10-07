@@ -216,3 +216,31 @@ def test_class_without_permissions_is_not_a_document() -> None:
     document: Document = without_permissions  # type: ignore[assignment]
 
     assert not hasattr(document, "permissions")
+
+
+def test_members_read_through_a_document_have_their_exact_types() -> None:
+    sample = SampleDocument(
+        text="Opening hours are 9am to 5pm.",
+        source_key="faq:opening-hours",
+        title="Opening hours",
+        url="https://example.test/faq/opening-hours",
+        language="en",
+        permissions=frozenset({"public"}),
+    )
+    document: Document = sample
+
+    text: str = document.text
+    source_key: str = document.source_key
+    title: str = document.title
+    url: str = document.url
+    language: str | None = document.language
+    permissions: AbstractSet[str] = document.permissions
+
+    assert (text, source_key, title, url, language, permissions) == (
+        sample.text,
+        sample.source_key,
+        sample.title,
+        sample.url,
+        sample.language,
+        sample.permissions,
+    )
