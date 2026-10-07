@@ -33,7 +33,8 @@ def split_text(
     _require_every_character_fits(content, limit=limit)
     chunks: list[str] = []
     short_paragraphs: list[str] = []
-    for paragraph in BLANK_LINES.split(content):
+    for raw_paragraph in BLANK_LINES.split(content):
+        paragraph = raw_paragraph.strip()
         if limit.fits(paragraph):
             short_paragraphs.append(paragraph)
             continue
