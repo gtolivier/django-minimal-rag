@@ -16,6 +16,34 @@ class DocumentWithoutText:
     permissions: AbstractSet[str]
 
 
+class ReadOnlyDocument:
+    """Every member of a document, as a property without a setter."""
+
+    @property
+    def text(self) -> str:
+        return "Opening hours are 9am to 5pm."
+
+    @property
+    def source_key(self) -> str:
+        return "faq:opening-hours"
+
+    @property
+    def title(self) -> str:
+        return "Opening hours"
+
+    @property
+    def url(self) -> str:
+        return "https://example.test/faq/opening-hours"
+
+    @property
+    def language(self) -> str | None:
+        return "en"
+
+    @property
+    def permissions(self) -> AbstractSet[str]:
+        return frozenset({"public"})
+
+
 def test_test_bench_document_is_accepted_where_a_document_is_expected() -> None:
     sample = SampleDocument(
         text="Opening hours are 9am to 5pm.",
@@ -29,6 +57,14 @@ def test_test_bench_document_is_accepted_where_a_document_is_expected() -> None:
     document: Document = sample
 
     assert document is sample
+
+
+def test_class_with_read_only_members_is_a_document() -> None:
+    read_only = ReadOnlyDocument()
+
+    document: Document = read_only
+
+    assert document is read_only
 
 
 def test_class_without_text_is_not_a_document() -> None:
