@@ -43,8 +43,10 @@ django-minimal-rag never imports django-model-rag, and django-model-rag
 never imports it: the host project connects them, by naming
 django-minimal-rag's output in its settings.
 [django-model-rag-demo](https://github.com/gtolivier/django-model-rag-demo)
-installs both; it will type-check them together once this package's
-document Protocol exists (feature 1).
+installs both; now that this package's document Protocol exists
+(feature 1), it can type-check them together once it wires them up —
+until then, nothing checks that `NormalizedDocument` keeps the Protocol's
+shape.
 
 Inside the package, two paths share the storage:
 
@@ -83,13 +85,15 @@ implements.
   any document of the right shape, whatever produced it. Its indexing API is
   therefore an API of its own, usable directly, not an adapter for
   django-model-rag.
-- **The document is a Protocol, defined here.** A `typing.Protocol`
-  describes what this package reads from a document (`text`, `title`, `url`,
-  `source_key`…), with read-only members (`@property`), so that a dataclass
-  field and a property both satisfy it. django-model-rag's
-  `NormalizedDocument` satisfies it by its shape alone. Its exact members
-  are settled by the design pass: they must match attribute names that
-  django-model-rag already treats as a contract.
+- **The document is a Protocol, defined here.** `django_minimal_rag.Document`
+  is a `typing.Protocol` with six read-only members (`@property`), so that a
+  dataclass field and a property both satisfy it: `text`, `source_key`,
+  `title` and `url` (`str`), `language` (`str | None`) and `permissions`
+  (`AbstractSet[str]`). Every member is required of every producer — a
+  Protocol has no optional members — and their names match the attributes
+  django-model-rag already treats as a contract, so its
+  `NormalizedDocument` satisfies it by its shape alone. `metadata` is left
+  out until a feature reads it.
 - **The output is django-model-rag's Protocol, satisfied by shape.**
   `replace(groups)` takes a mapping of `source_key` to the complete
   sequence of that source's documents, and replaces everything stored for
@@ -127,20 +131,15 @@ implements.
 
 ## Open questions
 
-To settle in the design pass, before feature 1.
+Each one is settled before the feature that needs its answer.
 
-- **The document Protocol:** which members it declares. A Protocol has no
-  optional members: an attribute that some producers' documents lack
-  (`title`, `url`, `language`, `metadata`, `permissions`) is either required
-  of every producer, or left out of the Protocol and read with a fallback
-  the type checker cannot see — or the Protocol is split into smaller ones.
-  Also what an unknown `language` (`None`) means — falling back on
-  `LANGUAGE_CODE` or not.
+- **Unknown language:** what a document's `language` of `None` means —
+  falling back on `LANGUAGE_CODE` or not.
 - **Citations:** how a document without a URL is cited. django-model-rag
-  gives an empty `url` (`""`) to a model with no URL source, so either the
-  Protocol requires a non-empty `url` — and such documents cannot be
-  indexed — or a citation falls back on something else, such as the title
-  or the `source_key`.
+  gives an empty `url` (`""`) to a model with no URL source, and the
+  Protocol's `url: str` accepts it, so either indexing rejects an empty
+  `url` at runtime — and such documents cannot be indexed — or a citation
+  falls back on something else, such as the title or the `source_key`.
 - **Chunking:** by characters, tokens or structure (paragraphs, headings);
   size and overlap; whether the title is repeated in each chunk.
 - **Embeddings:** how a project chooses its embedding API (a setting shaped
@@ -176,7 +175,7 @@ Provisional: the design pass may reorder, split or merge them.
 
 - [x] **0. Test bench.** pytest-django, test settings using PostgreSQL with
   pgvector, and a PostgreSQL service in CI.
-- [ ] **1. The document Protocol.** Checked by a document class of the test
+- [x] **1. The document Protocol.** Checked by a document class of the test
   bench, without django-model-rag.
 - [ ] **2. Chunking.** A document's text split into chunks, each knowing
   its rank within its group.

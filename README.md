@@ -18,9 +18,18 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Nothing is implemented yet: see [ROADMAP.md](ROADMAP.md) for
-the planned architecture, the decisions already made and the features to
-come.
+Pre-alpha. Only the document Protocol exists so far: see
+[ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
+already made and the features to come.
+
+## Documents
+
+This package indexes any object shaped like `django_minimal_rag.Document`,
+a `typing.Protocol`: `text`, `source_key`, `title` and `url` (`str`),
+`language` (`str | None`) and `permissions` (`AbstractSet[str]`), all
+read-only. Any class with those members — a dataclass, frozen or not, a
+class with properties or with plain attributes — satisfies it by its shape
+alone: no base class to inherit, nothing to import from the producer.
 
 ## Requirements
 
