@@ -122,10 +122,14 @@ def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     It keeps at least one character even when none fits, so cutting a word
     always moves forward.
     """
-    end = len(text)
-    while end > 1 and not limit.fits(text[:end]):
-        end -= 1
-    return text[:end]
+    low, high = 1, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if limit.fits(text[:middle]):
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low]
 
 
 def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
