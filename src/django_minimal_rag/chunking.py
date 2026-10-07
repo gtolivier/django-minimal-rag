@@ -1,6 +1,9 @@
 """Splitting text into chunks."""
 
+import re
+
 PARAGRAPH_SEPARATOR = "\n\n"
+BLANK_LINES = re.compile(r"\n\s*\n")
 
 
 def split_text(text: str, *, max_length: int) -> list[str]:
@@ -8,7 +11,7 @@ def split_text(text: str, *, max_length: int) -> list[str]:
     content = text.strip()
     if not content:
         return []
-    return _pack_paragraphs(content.split(PARAGRAPH_SEPARATOR), max_length=max_length)
+    return _pack_paragraphs(BLANK_LINES.split(content), max_length=max_length)
 
 
 def _pack_paragraphs(paragraphs: list[str], *, max_length: int) -> list[str]:
