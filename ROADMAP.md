@@ -128,6 +128,19 @@ implements.
   not change the release cycle or the test matrix — a background-task
   backend, for instance. Anything needing its own release cycle is a
   separate package.
+- **Chunking by characters, paragraphs first.** A document's text is split
+  on blank lines; paragraphs that fit are packed together, a paragraph too
+  long is split between words, and a word too long is cut. `max_length`
+  (1000 by default) bounds each chunk as measured by a `length` function,
+  `len` by default: a project counting tokens passes its tokenizer's
+  count, without the package depending on any tokenizer. No overlap
+  between chunks, and the title is not repeated in them: it is stored with
+  its document. A group's chunks are ranked from 0, across its documents in
+  their order; a document with no text gives no chunk and takes no rank.
+- **Bring your own embedding model.** The project chooses its embedding
+  model, through a backend it names in a setting; the package ships no
+  model of its own, and nothing in it assumes a given provider or vector
+  dimension.
 
 ## Open questions
 
@@ -140,12 +153,12 @@ Each one is settled before the feature that needs its answer.
   Protocol's `url: str` accepts it, so either indexing rejects an empty
   `url` at runtime — and such documents cannot be indexed — or a citation
   falls back on something else, such as the title or the `source_key`.
-- **Chunking:** by characters, tokens or structure (paragraphs, headings);
-  size and overlap; whether the title is repeated in each chunk.
-- **Embeddings:** how a project chooses its embedding API (a setting shaped
-  like `STORAGES`, as for the output?), the vector dimension that a
-  migration fixes — needed before feature 3 — and what changing models
-  means for stored vectors.
+- **Embeddings:** the shape of the setting naming the embedding backend
+  (`{"BACKEND": "…", "OPTIONS": {…}}`, as for the output?), how storage
+  handles a dimension the project chooses — a vector column without a
+  fixed dimension, or one fixed by a migration the project generates —
+  needed before feature 3, and what changing models means for stored
+  vectors (storing the model's name with each vector, for instance).
 - **Permission filtering:** documents carry permission names
   (`app_label.codename`). What they mean — all of them required, an empty
   set readable by everyone, as django-model-rag's example
@@ -177,7 +190,7 @@ Provisional: the design pass may reorder, split or merge them.
   pgvector, and a PostgreSQL service in CI.
 - [x] **1. The document Protocol.** Checked by a document class of the test
   bench, without django-model-rag.
-- [ ] **2. Chunking.** A document's text split into chunks, each knowing
+- [x] **2. Chunking.** A document's text split into chunks, each knowing
   its rank within its group.
 - [ ] **3. Storage.** Models for sources and chunks, with their
   permissions, their vector field and its migration.
