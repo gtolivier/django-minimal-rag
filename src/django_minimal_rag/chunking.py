@@ -42,9 +42,24 @@ def split_text(
     return chunks + _pack_paragraphs(short_paragraphs, limit=limit)
 
 
-def chunk_group(documents: Sequence[Document]) -> list[str]:
+@dataclass(frozen=True)
+class Chunk:
+    """A piece of a document's text, with its rank in the group."""
+
+    document: Document
+    text: str
+    rank: int
+
+
+def chunk_group(documents: Sequence[Document]) -> list[Chunk]:
     """Chunk the ``documents`` of a group."""
-    return [chunk for document in documents for chunk in split_text(document.text)]
+    pieces = [
+        (document, text) for document in documents for text in split_text(document.text)
+    ]
+    return [
+        Chunk(document=document, text=text, rank=rank)
+        for rank, (document, text) in enumerate(pieces)
+    ]
 
 
 @dataclass(frozen=True)
