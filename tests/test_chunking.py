@@ -138,6 +138,27 @@ def test_paragraph_longer_than_max_length_is_split_between_lines_packed() -> Non
     assert split_text(text, max_length=max_length) == [first_two, third]
 
 
+def test_pieces_of_a_split_line_are_not_merged_with_its_neighbour_lines() -> None:
+    before = "A."
+    long_line = "alpha beta gamma delta epsilon"
+    after = "B."
+    text = f"{before}\n{long_line}\n{after}"
+    max_length = 14
+    assert len(text) > max_length
+    assert len(long_line) > max_length
+    # Both neighbour lines would fit next to the adjacent piece of the split line.
+    assert len(f"{before}\nalpha beta") <= max_length
+    assert len(f"epsilon\n{after}") <= max_length
+
+    assert split_text(text, max_length=max_length) == [
+        before,
+        "alpha beta",
+        "gamma delta",
+        "epsilon",
+        after,
+    ]
+
+
 def test_word_longer_than_max_length_is_cut_into_pieces_of_max_length() -> None:
     text = "abcdefghij"
     max_length = 4
