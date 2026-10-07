@@ -5,4 +5,4 @@ def split_text(text: str, *, max_length: int) -> list[str]:  # noqa: ARG001  # m
     """Split ``text`` into chunks of at most ``max_length`` characters."""
     if not text.strip():
         return []
-    return [text]
+    return [text.strip()]
