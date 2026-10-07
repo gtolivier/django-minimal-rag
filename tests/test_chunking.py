@@ -122,6 +122,22 @@ def test_pieces_of_a_split_paragraph_are_not_merged_with_its_neighbours() -> Non
     ]
 
 
+def test_paragraph_longer_than_max_length_is_split_between_lines_packed() -> None:
+    first = "alpha beta"
+    second = "gamma"
+    third = "delta epsilon"
+    first_two = f"{first}\n{second}"
+    text = f"{first_two}\n{third}"
+    max_length = 16
+    assert len(text) > max_length
+    assert len(first_two) <= max_length
+    assert len(third) <= max_length
+
+    # Lines are kept whole and joined by one newline, not split into words
+    # joined by spaces.
+    assert split_text(text, max_length=max_length) == [first_two, third]
+
+
 def test_word_longer_than_max_length_is_cut_into_pieces_of_max_length() -> None:
     text = "abcdefghij"
     max_length = 4
