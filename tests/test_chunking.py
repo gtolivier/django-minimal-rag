@@ -49,3 +49,10 @@ def test_consecutive_paragraphs_are_packed_into_one_chunk_while_they_fit() -> No
     assert len(text) > max_length
 
     assert split_text(text, max_length=max_length) == [first_two, third]
+
+
+def test_paragraphs_are_joined_by_one_blank_line_whatever_separates_them() -> None:
+    # Several blank lines, then a blank line holding spaces and a tab.
+    text = "A.\n\n\n\nB.\n  \t\nC."
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB.\n\nC."]
