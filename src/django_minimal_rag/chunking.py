@@ -61,6 +61,9 @@ def chunk_group(
     length: Length = len,
 ) -> list[Chunk]:
     """Chunk the ``documents`` of a group, each split by ``split_text``."""
+    if max_length < 1:
+        msg = f"max_length must be at least 1, got {max_length}"
+        raise ValueError(msg)
     pieces = [
         (document, text)
         for document in documents
