@@ -14,3 +14,6 @@ class Document(Protocol):
 
     @property
     def title(self) -> str: ...
+
+    @property
+    def url(self) -> str: ...
