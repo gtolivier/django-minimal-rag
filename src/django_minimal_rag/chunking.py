@@ -65,12 +65,22 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
     pieces: list[str] = []
     rest = word
     while rest:
-        end = len(rest)
-        while end > 1 and not limit.fits(rest[:end]):
-            end -= 1
-        pieces.append(rest[:end])
-        rest = rest[end:]
+        piece = _longest_fitting_prefix(rest, limit=limit)
+        pieces.append(piece)
+        rest = rest.removeprefix(piece)
     return pieces
+
+
+def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
+    """The longest prefix of ``text`` that fits ``limit``.
+
+    It keeps at least one character even when none fits, so cutting a word
+    always moves forward.
+    """
+    end = len(text)
+    while end > 1 and not limit.fits(text[:end]):
+        end -= 1
+    return text[:end]
 
 
 def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
