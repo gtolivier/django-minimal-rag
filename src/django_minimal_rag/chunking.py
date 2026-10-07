@@ -3,6 +3,7 @@
 import re
 
 PARAGRAPH_SEPARATOR = "\n\n"
+WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
 
 
@@ -11,34 +12,28 @@ def split_text(text: str, *, max_length: int) -> list[str]:
     content = text.strip()
     if not content:
         return []
-    chunks: list[str] = []
-    for paragraph in BLANK_LINES.split(content):
-        if len(paragraph) > max_length:
-            chunks.extend(_pack_words(paragraph.split(), max_length=max_length))
-        else:
-            chunks.append(paragraph)
-    return _pack_paragraphs(chunks, max_length=max_length)
+    pieces = [
+        piece
+        for paragraph in BLANK_LINES.split(content)
+        for piece in _split_paragraph(paragraph, max_length=max_length)
+    ]
+    return _pack(pieces, separator=PARAGRAPH_SEPARATOR, max_length=max_length)
 
 
-def _pack_words(words: list[str], *, max_length: int) -> list[str]:
-    """Join consecutive ``words`` with one space while they fit in ``max_length``."""
-    chunks = words[:1]
-    for word in words[1:]:
-        candidate = chunks[-1] + " " + word
+def _split_paragraph(paragraph: str, *, max_length: int) -> list[str]:
+    """Split ``paragraph`` between words if it is longer than ``max_length``."""
+    if len(paragraph) <= max_length:
+        return [paragraph]
+    return _pack(paragraph.split(), separator=WORD_SEPARATOR, max_length=max_length)
+
+
+def _pack(pieces: list[str], *, separator: str, max_length: int) -> list[str]:
+    """Join consecutive ``pieces`` with ``separator`` while they fit ``max_length``."""
+    chunks = pieces[:1]
+    for piece in pieces[1:]:
+        candidate = chunks[-1] + separator + piece
         if len(candidate) <= max_length:
             chunks[-1] = candidate
         else:
-            chunks.append(word)
-    return chunks
-
-
-def _pack_paragraphs(paragraphs: list[str], *, max_length: int) -> list[str]:
-    """Join consecutive ``paragraphs`` greedily while they fit in ``max_length``."""
-    chunks = paragraphs[:1]
-    for paragraph in paragraphs[1:]:
-        candidate = chunks[-1] + PARAGRAPH_SEPARATOR + paragraph
-        if len(candidate) <= max_length:
-            chunks[-1] = candidate
-        else:
-            chunks.append(paragraph)
+            chunks.append(piece)
     return chunks
