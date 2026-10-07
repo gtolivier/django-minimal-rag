@@ -258,3 +258,39 @@ def test_document_with_empty_text_gives_no_chunk_and_takes_no_rank() -> None:
         (before, "A note before.", 0),
         (after, "A note after.", 1),
     ]
+
+
+def test_max_length_and_length_are_applied_to_every_document_of_the_group() -> None:
+    max_words = 2
+    first = SampleDocument(
+        text="alpha beta gamma",
+        source_key="app.note:1",
+        title="First",
+        url="https://example.com/notes/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+    second = SampleDocument(
+        text="delta epsilon zeta theta",
+        source_key="app.note:2",
+        title="Second",
+        url="https://example.com/notes/2/",
+        language="en",
+        permissions=frozenset(),
+    )
+    # Every word is longer than max_words characters: counted in characters,
+    # each would be cut.
+    assert all(
+        len(word) > max_words
+        for document in (first, second)
+        for word in document.text.split()
+    )
+
+    chunks = chunk_group([first, second], max_length=max_words, length=count_words)
+
+    assert [(chunk.document, chunk.text, chunk.rank) for chunk in chunks] == [
+        (first, "alpha beta", 0),
+        (first, "gamma", 1),
+        (second, "delta epsilon", 2),
+        (second, "zeta theta", 3),
+    ]
