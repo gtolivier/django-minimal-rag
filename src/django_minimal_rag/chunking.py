@@ -25,9 +25,7 @@ def split_text(
     Sizes are measured by ``length``, which counts characters by default.
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
-    if max_length < 1:
-        msg = f"max_length must be at least 1, got {max_length}"
-        raise ValueError(msg)
+    _require_positive_max_length(max_length)
     content = text.replace("\r\n", "\n").strip()
     if not content:
         return []
@@ -61,9 +59,7 @@ def chunk_group(
     length: Length = len,
 ) -> list[Chunk]:
     """Chunk the ``documents`` of a group, each split by ``split_text``."""
-    if max_length < 1:
-        msg = f"max_length must be at least 1, got {max_length}"
-        raise ValueError(msg)
+    _require_positive_max_length(max_length)
     pieces = [
         (document, text)
         for document in documents
@@ -85,6 +81,13 @@ class _SizeLimit:
     def fits(self, text: str) -> bool:
         """Whether ``text`` measures at most ``max_length``."""
         return self.length(text) <= self.max_length
+
+
+def _require_positive_max_length(max_length: int) -> None:
+    """Raise ``ValueError`` if ``max_length`` is below 1."""
+    if max_length < 1:
+        msg = f"max_length must be at least 1, got {max_length}"
+        raise ValueError(msg)
 
 
 def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
