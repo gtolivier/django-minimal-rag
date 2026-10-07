@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from django_minimal_rag.documents import Document
 
 PARAGRAPH_SEPARATOR = "\n\n"
+LINE_SEPARATOR = "\n"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
 
@@ -40,7 +41,7 @@ def split_text(
             continue
         chunks += _pack_paragraphs(short_paragraphs, limit=limit)
         short_paragraphs = []
-        chunks += _split_between_words(paragraph, limit=limit)
+        chunks += _split_between_lines(paragraph, limit=limit)
     return chunks + _pack_paragraphs(short_paragraphs, limit=limit)
 
 
@@ -93,6 +94,23 @@ def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
 def _pack_paragraphs(paragraphs: list[str], *, limit: _SizeLimit) -> list[str]:
     """Join consecutive ``paragraphs`` by blank lines while they fit ``limit``."""
     return _pack(paragraphs, separator=PARAGRAPH_SEPARATOR, limit=limit)
+
+
+def _split_between_lines(paragraph: str, *, limit: _SizeLimit) -> list[str]:
+    """Split ``paragraph`` between lines, packed into pieces that fit ``limit``.
+
+    A line that does not fit ``limit`` is split between words.
+    """
+    chunks: list[str] = []
+    short_lines: list[str] = []
+    for line in paragraph.split("\n"):
+        if limit.fits(line):
+            short_lines.append(line)
+            continue
+        chunks += _pack(short_lines, separator=LINE_SEPARATOR, limit=limit)
+        short_lines = []
+        chunks += _split_between_words(line, limit=limit)
+    return chunks + _pack(short_lines, separator=LINE_SEPARATOR, limit=limit)
 
 
 def _split_between_words(paragraph: str, *, limit: _SizeLimit) -> list[str]:
