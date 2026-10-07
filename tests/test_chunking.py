@@ -224,3 +224,37 @@ def test_ranks_continue_across_the_documents_of_a_group_in_their_order() -> None
         (first_document, second, 1),
         (second_document, third, 2),
     ]
+
+
+def test_document_with_empty_text_gives_no_chunk_and_takes_no_rank() -> None:
+    before = SampleDocument(
+        text="A note before.",
+        source_key="app.note:1",
+        title="Before",
+        url="https://example.com/notes/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+    empty = SampleDocument(
+        text="",
+        source_key="app.note:2",
+        title="Empty",
+        url="https://example.com/notes/2/",
+        language="en",
+        permissions=frozenset(),
+    )
+    after = SampleDocument(
+        text="A note after.",
+        source_key="app.note:3",
+        title="After",
+        url="https://example.com/notes/3/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    chunks = chunk_group([before, empty, after])
+
+    assert [(chunk.document, chunk.text, chunk.rank) for chunk in chunks] == [
+        (before, "A note before.", 0),
+        (after, "A note after.", 1),
+    ]
