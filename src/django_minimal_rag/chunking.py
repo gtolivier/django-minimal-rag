@@ -30,9 +30,7 @@ def split_text(
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
-    if any(not limit.fits(character) for character in set(content)):
-        msg = f"a character measures more than max_length ({max_length})"
-        raise ValueError(msg)
+    _require_every_character_fits(content, limit=limit)
     chunks: list[str] = []
     short_paragraphs: list[str] = []
     for paragraph in BLANK_LINES.split(content):
@@ -82,6 +80,13 @@ class _SizeLimit:
     def fits(self, text: str) -> bool:
         """Whether ``text`` measures at most ``max_length``."""
         return self.length(text) <= self.max_length
+
+
+def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
+    """Raise ``ValueError`` if a character of ``text`` alone does not fit ``limit``."""
+    if any(not limit.fits(character) for character in set(text)):
+        msg = f"a character measures more than max_length ({limit.max_length})"
+        raise ValueError(msg)
 
 
 def _pack_paragraphs(paragraphs: list[str], *, limit: _SizeLimit) -> list[str]:
