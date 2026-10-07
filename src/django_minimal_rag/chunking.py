@@ -10,4 +10,12 @@ def split_text(text: str, *, max_length: int) -> list[str]:
         return []
     if len(content) <= max_length:
         return [content]
-    return content.split(PARAGRAPH_SEPARATOR)
+    chunks: list[str] = []
+    for paragraph in content.split(PARAGRAPH_SEPARATOR):
+        if chunks:
+            candidate = chunks[-1] + PARAGRAPH_SEPARATOR + paragraph
+            if len(candidate) <= max_length:
+                chunks[-1] = candidate
+                continue
+        chunks.append(paragraph)
+    return chunks
