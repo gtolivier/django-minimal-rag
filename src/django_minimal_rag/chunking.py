@@ -8,14 +8,16 @@ def split_text(text: str, *, max_length: int) -> list[str]:
     content = text.strip()
     if not content:
         return []
-    if len(content) <= max_length:
-        return [content]
-    chunks: list[str] = []
-    for paragraph in content.split(PARAGRAPH_SEPARATOR):
-        if chunks:
-            candidate = chunks[-1] + PARAGRAPH_SEPARATOR + paragraph
-            if len(candidate) <= max_length:
-                chunks[-1] = candidate
-                continue
-        chunks.append(paragraph)
+    return _pack_paragraphs(content.split(PARAGRAPH_SEPARATOR), max_length=max_length)
+
+
+def _pack_paragraphs(paragraphs: list[str], *, max_length: int) -> list[str]:
+    """Join consecutive ``paragraphs`` greedily while they fit in ``max_length``."""
+    chunks = paragraphs[:1]
+    for paragraph in paragraphs[1:]:
+        candidate = chunks[-1] + PARAGRAPH_SEPARATOR + paragraph
+        if len(candidate) <= max_length:
+            chunks[-1] = candidate
+        else:
+            chunks.append(paragraph)
     return chunks
