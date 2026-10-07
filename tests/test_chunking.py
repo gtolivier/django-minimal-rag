@@ -23,3 +23,15 @@ def test_whitespace_around_the_text_is_stripped_from_its_chunk() -> None:
     text = " \n\tA short document.\n  \t"
 
     assert split_text(text, max_length=MAX_LENGTH) == ["A short document."]
+
+
+def test_two_paragraphs_exceeding_max_length_give_one_chunk_per_paragraph() -> None:
+    first = "First paragraph."
+    second = "Second paragraph."
+    text = f"{first}\n\n{second}"
+    max_length = 20
+    assert len(first) <= max_length
+    assert len(second) <= max_length
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == [first, second]
