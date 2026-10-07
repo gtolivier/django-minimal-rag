@@ -163,6 +163,20 @@ def test_max_length_below_1_raises_value_error() -> None:
         split_text("A short document.", max_length=0)
 
 
+def count_one_more_than_characters(text: str) -> int:
+    return len(text) + 1
+
+
+def test_character_measuring_more_than_max_length_raises_value_error() -> None:
+    max_length = 1
+    # Even a single character measures 2: no piece of the text could fit the
+    # limit, so the call is refused rather than producing chunks that exceed it.
+    assert count_one_more_than_characters("a") > max_length
+
+    with pytest.raises(ValueError):
+        split_text("abc", max_length=max_length, length=count_one_more_than_characters)
+
+
 def note(number: int, *, title: str, text: str) -> SampleDocument:
     """Note ``number`` of the host project, in English and public."""
     return SampleDocument(
