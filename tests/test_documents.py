@@ -49,6 +49,17 @@ class DocumentWithoutUrl:
     permissions: AbstractSet[str]
 
 
+@dataclass(frozen=True)
+class DocumentWithoutLanguage:
+    """Every member of a document except `language`."""
+
+    text: str
+    source_key: str
+    title: str
+    url: str
+    permissions: AbstractSet[str]
+
+
 class ReadOnlyDocument:
     """Every member of a document, as a property without a setter."""
 
@@ -162,3 +173,19 @@ def test_class_without_url_is_not_a_document() -> None:
     document: Document = without_url  # type: ignore[assignment]
 
     assert not hasattr(document, "url")
+
+
+def test_class_without_language_is_not_a_document() -> None:
+    without_language = DocumentWithoutLanguage(
+        text="Opening hours are 9am to 5pm.",
+        source_key="faq:opening-hours",
+        title="Opening hours",
+        url="https://example.test/faq/opening-hours",
+        permissions=frozenset({"public"}),
+    )
+
+    # The rejection is the behavior under test: mypy must refuse this
+    # assignment, and strict mypy reports the ignore as unused if it does not.
+    document: Document = without_language  # type: ignore[assignment]
+
+    assert not hasattr(document, "language")
