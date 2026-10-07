@@ -18,7 +18,9 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Nothing is implemented yet.
+Pre-alpha. Nothing is implemented yet: see [ROADMAP.md](ROADMAP.md) for
+the planned architecture, the decisions already made and the features to
+come.
 
 ## Requirements
 
