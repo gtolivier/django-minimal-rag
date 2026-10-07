@@ -31,8 +31,13 @@ come.
 
 ## Development
 
+The tests need PostgreSQL with pgvector. `compose.yaml` starts one on port
+5433, which the test settings default to; the libpq environment variables
+(`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`) point them elsewhere:
+
 ```sh
 uv sync
+docker compose up -d --wait
 uv run pytest
 uv run ruff check
 uv run ruff format --check

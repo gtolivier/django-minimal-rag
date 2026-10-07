@@ -1,0 +1,19 @@
+# PostgreSQL with pgvector, for the test suite. Port 5433 on the host, so
+# that it does not clash with a local PostgreSQL on 5432:
+#
+#   docker compose up -d --wait
+#   uv run pytest
+#
+# The test settings default to this database; the libpq environment
+# variables (PGHOST, PGPORT, PGUSER, PGPASSWORD) point them elsewhere.
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-U", "postgres"]
+      interval: 2s
+      retries: 15

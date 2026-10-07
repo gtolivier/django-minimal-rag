@@ -20,6 +20,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-django>=4.14.0",
     "ruff>=0.16.9",
 ]
 typecheck = [
@@ -28,6 +29,8 @@ typecheck = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
+DJANGO_SETTINGS_MODULE = "tests.settings"
 
 [tool.ruff.lint]
 select = [
