@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 
 from django_minimal_rag.documents import Document
@@ -44,13 +44,10 @@ def split_text(
 class Chunk:
     """A piece of a document's text, with its rank in the group."""
 
-    document: Document
+    # The document may be unhashable; equal chunks still share text and rank.
+    document: Document = field(hash=False)
     text: str
     rank: int
-
-    def __hash__(self) -> int:
-        # The document may be unhashable; equal chunks still share text and rank.
-        return hash((self.text, self.rank))
 
 
 def chunk_group(
@@ -93,9 +90,13 @@ def _require_positive_max_length(max_length: int) -> None:
 
 def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
     """Raise ``ValueError`` if a character of ``text`` alone does not fit ``limit``."""
-    if any(not limit.fits(character) for character in set(text)):
-        msg = f"a character measures more than max_length ({limit.max_length})"
-        raise ValueError(msg)
+    for character in dict.fromkeys(text):
+        if not limit.fits(character):
+            msg = (
+                f"character {character!r} measures {limit.length(character)}, "
+                f"more than max_length ({limit.max_length})"
+            )
+            raise ValueError(msg)
 
 
 def _pack_splitting_oversized(
@@ -145,6 +146,8 @@ def _split_between_words(text: str, *, limit: _SizeLimit) -> list[str]:
 
 def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
     """Cut ``word`` into its longest prefixes that fit ``limit``, unless it fits."""
+    if limit.fits(word):
+        return [word]
     pieces: list[str] = []
     rest = word
     while rest:
@@ -160,15 +163,31 @@ def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     The first character of ``text`` must fit ``limit``, as ``split_text``
     checks every character does: the prefix is never empty, so cutting a word
     always moves forward.
+
+    The search is bracketed first, so every measured prefix stays within twice
+    the size of the result, however long ``text`` is.
     """
-    low, high = 1, len(text)
-    while low < high:
-        middle = (low + high + 1) // 2
+    fitting, too_long = _bracket_longest_fitting_prefix(text, limit=limit)
+    while fitting + 1 < too_long:
+        middle = (fitting + too_long) // 2
         if limit.fits(text[:middle]):
-            low = middle
+            fitting = middle
         else:
-            high = middle - 1
-    return text[:low]
+            too_long = middle
+    return text[:fitting]
+
+
+def _bracket_longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> tuple[int, int]:
+    """Two sizes around the longest prefix of ``text`` that fits ``limit``.
+
+    The prefix of the first size fits; that of the second, larger one does
+    not, or would go past the end of ``text``. They are found by doubling the
+    size from 1, the first character being known to fit.
+    """
+    fitting = 1
+    while fitting * 2 <= len(text) and limit.fits(text[: fitting * 2]):
+        fitting *= 2
+    return fitting, min(fitting * 2, len(text) + 1)
 
 
 def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
