@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 PARAGRAPH_SEPARATOR = "\n\n"
 WORD_SEPARATOR = " "
@@ -18,66 +19,64 @@ def split_text(text: str, *, max_length: int, length: Length = len) -> list[str]
     content = text.strip()
     if not content:
         return []
+    limit = _SizeLimit(max_length=max_length, length=length)
     chunks: list[str] = []
     short_paragraphs: list[str] = []
     for paragraph in BLANK_LINES.split(content):
-        if length(paragraph) <= max_length:
+        if limit.fits(paragraph):
             short_paragraphs.append(paragraph)
             continue
-        chunks += _pack_paragraphs(
-            short_paragraphs, max_length=max_length, length=length
-        )
+        chunks += _pack_paragraphs(short_paragraphs, limit=limit)
         short_paragraphs = []
-        chunks += _split_between_words(paragraph, max_length=max_length, length=length)
-    return chunks + _pack_paragraphs(
-        short_paragraphs, max_length=max_length, length=length
-    )
+        chunks += _split_between_words(paragraph, limit=limit)
+    return chunks + _pack_paragraphs(short_paragraphs, limit=limit)
 
 
-def _pack_paragraphs(
-    paragraphs: list[str], *, max_length: int, length: Length
-) -> list[str]:
-    """Join consecutive ``paragraphs`` by blank lines while they fit ``max_length``."""
-    return _pack(
-        paragraphs,
-        separator=PARAGRAPH_SEPARATOR,
-        max_length=max_length,
-        length=length,
-    )
+@dataclass(frozen=True)
+class _SizeLimit:
+    """The largest size a chunk may have, and how sizes are measured."""
+
+    max_length: int
+    length: Length
+
+    def fits(self, text: str) -> bool:
+        """Whether ``text`` measures at most ``max_length``."""
+        return self.length(text) <= self.max_length
 
 
-def _split_between_words(
-    paragraph: str, *, max_length: int, length: Length
-) -> list[str]:
-    """Split ``paragraph`` between words into pieces of at most ``max_length``.
+def _pack_paragraphs(paragraphs: list[str], *, limit: _SizeLimit) -> list[str]:
+    """Join consecutive ``paragraphs`` by blank lines while they fit ``limit``."""
+    return _pack(paragraphs, separator=PARAGRAPH_SEPARATOR, limit=limit)
 
-    A word longer than ``max_length`` is cut first, so it fits a piece.
+
+def _split_between_words(paragraph: str, *, limit: _SizeLimit) -> list[str]:
+    """Split ``paragraph`` between words into pieces that fit ``limit``.
+
+    A word that does not fit ``limit`` is cut first, so it fits a piece.
     """
     words = [
-        piece
-        for word in paragraph.split()
-        for piece in _cut_word(word, max_length=max_length, length=length)
+        piece for word in paragraph.split() for piece in _cut_word(word, limit=limit)
     ]
-    return _pack(words, separator=WORD_SEPARATOR, max_length=max_length, length=length)
+    return _pack(words, separator=WORD_SEPARATOR, limit=limit)
 
 
-def _cut_word(word: str, *, max_length: int, length: Length) -> list[str]:
-    """Cut ``word`` into consecutive pieces of at most ``max_length`` characters."""
-    if length(word) <= max_length:
+def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
+    """Cut ``word`` into pieces of ``max_length`` characters, unless it fits."""
+    if limit.fits(word):
         return [word]
+    piece_length = limit.max_length
     return [
-        word[start : start + max_length] for start in range(0, len(word), max_length)
+        word[start : start + piece_length]
+        for start in range(0, len(word), piece_length)
     ]
 
 
-def _pack(
-    pieces: list[str], *, separator: str, max_length: int, length: Length
-) -> list[str]:
-    """Join consecutive ``pieces`` with ``separator`` while they fit ``max_length``."""
+def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
+    """Join consecutive ``pieces`` with ``separator`` while they fit ``limit``."""
     chunks = pieces[:1]
     for piece in pieces[1:]:
         candidate = chunks[-1] + separator + piece
-        if length(candidate) <= max_length:
+        if limit.fits(candidate):
             chunks[-1] = candidate
         else:
             chunks.append(piece)
