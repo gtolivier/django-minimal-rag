@@ -70,6 +70,16 @@ def test_paragraphs_are_joined_by_one_blank_line_whatever_separates_them() -> No
     assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB.\n\nC."]
 
 
+def test_crlf_line_endings_become_lf_between_and_within_paragraphs() -> None:
+    # A line break inside the first paragraph, a blank line between the two.
+    text = "First line,\r\nsecond line.\r\n\r\nNext paragraph."
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [
+        "First line,\nsecond line.\n\nNext paragraph."
+    ]
+
+
 def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
     text = "alpha beta gamma delta epsilon"
     max_length = 12
