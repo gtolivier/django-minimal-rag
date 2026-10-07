@@ -77,3 +77,23 @@ def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> Non
         "gamma delta",
         "epsilon",
     ]
+
+
+def test_pieces_of_a_split_paragraph_are_not_merged_with_its_neighbours() -> None:
+    before = "A."
+    long_paragraph = "alpha beta gamma delta epsilon"
+    after = "B."
+    text = f"{before}\n\n{long_paragraph}\n\n{after}"
+    max_length = 14
+    assert len(long_paragraph) > max_length
+    # Both neighbours would fit next to the adjacent piece of the split paragraph.
+    assert len(f"{before}\n\nalpha beta") <= max_length
+    assert len(f"epsilon\n\n{after}") <= max_length
+
+    assert split_text(text, max_length=max_length) == [
+        before,
+        "alpha beta",
+        "gamma delta",
+        "epsilon",
+        after,
+    ]
