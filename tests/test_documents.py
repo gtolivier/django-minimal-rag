@@ -1,5 +1,6 @@
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from typing import assert_type
 
 import pytest
 
@@ -239,12 +240,14 @@ def test_members_read_through_a_document_have_their_exact_types(
 ) -> None:
     document: Document = sample
 
-    text: str = document.text
-    source_key: str = document.source_key
-    title: str = document.title
-    url: str = document.url
-    language: str | None = document.language
-    permissions: AbstractSet[str] = document.permissions
+    # assert_type pins each type exactly: mypy fails if a member is loosened
+    # (to Any or object, for instance), which an annotated assignment accepts.
+    text = assert_type(document.text, str)
+    source_key = assert_type(document.source_key, str)
+    title = assert_type(document.title, str)
+    url = assert_type(document.url, str)
+    language = assert_type(document.language, str | None)
+    permissions = assert_type(document.permissions, AbstractSet[str])
 
     assert (text, source_key, title, url, language, permissions) == (
         sample.text,
