@@ -65,3 +65,15 @@ def test_paragraphs_are_joined_by_one_blank_line_whatever_separates_them() -> No
     text = "A.\n\n\n\nB.\n  \t\nC."
 
     assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB.\n\nC."]
+
+
+def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
+    text = "alpha beta gamma delta epsilon"
+    max_length = 12
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == [
+        "alpha beta",
+        "gamma delta",
+        "epsilon",
+    ]
