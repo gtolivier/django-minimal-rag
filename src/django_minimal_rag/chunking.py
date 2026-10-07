@@ -30,6 +30,9 @@ def split_text(
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
+    if any(not limit.fits(character) for character in set(content)):
+        msg = f"a character measures more than max_length ({max_length})"
+        raise ValueError(msg)
     chunks: list[str] = []
     short_paragraphs: list[str] = []
     for paragraph in BLANK_LINES.split(content):
