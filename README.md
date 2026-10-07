@@ -27,9 +27,9 @@ already made and the features to come.
 This package indexes any object shaped like `django_minimal_rag.Document`,
 a `typing.Protocol`: `text`, `source_key`, `title` and `url` (`str`),
 `language` (`str | None`) and `permissions` (`AbstractSet[str]`), all
-read-only. A frozen dataclass or a class with properties satisfies it by
-its shape alone — no base class to inherit, nothing to import from the
-producer.
+read-only. Any class with those members — a dataclass, frozen or not, a
+class with properties or with plain attributes — satisfies it by its shape
+alone: no base class to inherit, nothing to import from the producer.
 
 ## Requirements
 

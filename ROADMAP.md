@@ -43,8 +43,10 @@ django-minimal-rag never imports django-model-rag, and django-model-rag
 never imports it: the host project connects them, by naming
 django-minimal-rag's output in its settings.
 [django-model-rag-demo](https://github.com/gtolivier/django-model-rag-demo)
-installs both; it can type-check them together against this package's
-document Protocol (feature 1).
+installs both; now that this package's document Protocol exists
+(feature 1), it can type-check them together once it wires them up —
+until then, nothing checks that `NormalizedDocument` keeps the Protocol's
+shape.
 
 Inside the package, two paths share the storage:
 
@@ -129,15 +131,15 @@ implements.
 
 ## Open questions
 
-To settle in the design pass, before feature 1.
+Each one is settled before the feature that needs its answer.
 
 - **Unknown language:** what a document's `language` of `None` means —
   falling back on `LANGUAGE_CODE` or not.
 - **Citations:** how a document without a URL is cited. django-model-rag
-  gives an empty `url` (`""`) to a model with no URL source, so either the
-  Protocol requires a non-empty `url` — and such documents cannot be
-  indexed — or a citation falls back on something else, such as the title
-  or the `source_key`.
+  gives an empty `url` (`""`) to a model with no URL source, and the
+  Protocol's `url: str` accepts it, so either indexing rejects an empty
+  `url` at runtime — and such documents cannot be indexed — or a citation
+  falls back on something else, such as the title or the `source_key`.
 - **Chunking:** by characters, tokens or structure (paragraphs, headings);
   size and overlap; whether the title is repeated in each chunk.
 - **Embeddings:** how a project chooses its embedding API (a setting shaped
