@@ -17,3 +17,6 @@ class Document(Protocol):
 
     @property
     def url(self) -> str: ...
+
+    @property
+    def language(self) -> str | None: ...
