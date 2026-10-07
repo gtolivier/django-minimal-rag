@@ -49,6 +49,10 @@ class Chunk:
     text: str
     rank: int
 
+    def __hash__(self) -> int:
+        # The document may be unhashable; equal chunks still share text and rank.
+        return hash((self.text, self.rank))
+
 
 def chunk_group(
     documents: Sequence[Document],
