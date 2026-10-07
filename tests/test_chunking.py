@@ -8,6 +8,10 @@ def test_empty_text_gives_no_chunks() -> None:
     assert split_text("", max_length=MAX_LENGTH) == []
 
 
+def test_whitespace_only_text_gives_no_chunks() -> None:
+    assert split_text(" \t\n  \n", max_length=MAX_LENGTH) == []
+
+
 def test_text_shorter_than_max_length_gives_one_chunk_the_text_itself() -> None:
     text = "A short document."
     assert len(text) < MAX_LENGTH
