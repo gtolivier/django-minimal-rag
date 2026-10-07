@@ -123,3 +123,22 @@ def test_sizes_are_measured_by_the_length_function_given() -> None:
         "gamma delta",
         "epsilon",
     ]
+
+
+def count_utf8_bytes(text: str) -> int:
+    return len(text.encode())
+
+
+def test_word_too_long_for_length_function_is_cut_at_longest_fitting_prefix() -> None:
+    # "é" takes two bytes in UTF-8, every other letter one.
+    text = "aébécé"
+    max_bytes = 4
+    assert count_utf8_bytes(text) > max_bytes
+
+    # Each piece is the longest prefix of what remains measuring at most
+    # max_bytes, so pieces hold different numbers of characters.
+    assert split_text(text, max_length=max_bytes, length=count_utf8_bytes) == [
+        "aéb",  # 4 bytes: adding "é" would make 6
+        "éc",  # 3 bytes: adding "é" would make 5
+        "é",
+    ]
