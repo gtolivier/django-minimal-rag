@@ -11,3 +11,6 @@ class Document(Protocol):
 
     @property
     def source_key(self) -> str: ...
+
+    @property
+    def title(self) -> str: ...
