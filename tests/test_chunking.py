@@ -105,3 +105,21 @@ def test_word_longer_than_max_length_is_cut_into_pieces_of_max_length() -> None:
     assert len(text) > max_length
 
     assert split_text(text, max_length=max_length) == ["abcd", "efgh", "ij"]
+
+
+def count_words(text: str) -> int:
+    return len(text.split())
+
+
+def test_sizes_are_measured_by_the_length_function_given() -> None:
+    text = "alpha beta gamma delta epsilon"
+    max_words = 2
+    # Every word is longer than max_words characters: counted in characters,
+    # each would be cut.
+    assert all(len(word) > max_words for word in text.split())
+
+    assert split_text(text, max_length=max_words, length=count_words) == [
+        "alpha beta",
+        "gamma delta",
+        "epsilon",
+    ]
