@@ -190,3 +190,37 @@ def test_each_chunk_of_one_document_holds_the_document_its_text_and_rank() -> No
         (document, first, 0),
         (document, second, 1),
     ]
+
+
+def test_ranks_continue_across_the_documents_of_a_group_in_their_order() -> None:
+    default_max_length = 1000
+    first = " ".join(["alpha"] * 100)
+    second = " ".join(["beta"] * 120)
+    third = "A short note."
+    assert len(first) <= default_max_length
+    assert len(second) <= default_max_length
+    assert len(f"{first}\n\n{second}") > default_max_length
+    first_document = SampleDocument(
+        text=f"{first}\n\n{second}",
+        source_key="app.note:1",
+        title="A long note",
+        url="https://example.com/notes/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+    second_document = SampleDocument(
+        text=third,
+        source_key="app.note:2",
+        title="A short note",
+        url="https://example.com/notes/2/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    chunks = chunk_group([first_document, second_document])
+
+    assert [(chunk.document, chunk.text, chunk.rank) for chunk in chunks] == [
+        (first_document, first, 0),
+        (first_document, second, 1),
+        (second_document, third, 2),
+    ]
