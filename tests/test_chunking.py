@@ -1,6 +1,7 @@
 import pytest
 
-from django_minimal_rag.chunking import chunk_group, split_text
+from django_minimal_rag.chunking import Chunk, chunk_group, split_text
+from tests.documents import SampleDocument
 
 # A limit well above the length of the short texts below.
 MAX_LENGTH = 100
@@ -164,3 +165,28 @@ def test_max_length_below_1_raises_value_error() -> None:
 
 def test_group_with_no_documents_gives_no_chunks() -> None:
     assert chunk_group([]) == []
+
+
+def test_each_chunk_of_one_document_holds_the_document_its_text_and_rank() -> None:
+    default_max_length = 1000
+    first = " ".join(["alpha"] * 100)
+    second = " ".join(["beta"] * 120)
+    text = f"{first}\n\n{second}"
+    assert len(first) <= default_max_length
+    assert len(second) <= default_max_length
+    assert len(text) > default_max_length
+    document = SampleDocument(
+        text=text,
+        source_key="app.note:1",
+        title="A note",
+        url="https://example.com/notes/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    chunks: list[Chunk] = chunk_group([document])
+
+    assert [(chunk.document, chunk.text, chunk.rank) for chunk in chunks] == [
+        (document, first, 0),
+        (document, second, 1),
+    ]
