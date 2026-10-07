@@ -2,7 +2,10 @@
 # that it does not clash with a local PostgreSQL on 5432:
 #
 #   docker compose up -d --wait
-#   PGHOST=localhost PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres uv run pytest
+#   uv run pytest
+#
+# The test settings default to this database; the libpq environment
+# variables (PGHOST, PGPORT, PGUSER, PGPASSWORD) point them elsewhere.
 services:
   postgres:
     image: pgvector/pgvector:0.8.7-pg18

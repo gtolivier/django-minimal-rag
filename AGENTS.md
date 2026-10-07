@@ -6,10 +6,9 @@ Instructions for coding agents working in this repository. Read
 ## Commands
 
 - Install: `uv sync`
-- Test: `docker compose up -d --wait`, then
-  `PGHOST=localhost PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres uv run pytest`
-  (PostgreSQL with pgvector, from `compose.yaml`; the test settings read
-  the connection from the libpq environment variables)
+- Test: `uv run pytest`, with the database of `compose.yaml` running
+  (`docker compose up -d --wait`: PostgreSQL with pgvector on port 5433,
+  which the test settings default to)
 - Lint: `uv run ruff check` — format: `uv run ruff format`
 - Type check: `uv run --group typecheck mypy` (strict, with django-stubs)
 
