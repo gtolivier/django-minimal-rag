@@ -18,7 +18,7 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Only the document Protocol exists so far: see
+Pre-alpha. Only the document Protocol and chunking exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -30,6 +30,21 @@ a `typing.Protocol`: `text`, `source_key`, `title` and `url` (`str`),
 read-only. Any class with those members — a dataclass, frozen or not, a
 class with properties or with plain attributes — satisfies it by its shape
 alone: no base class to inherit, nothing to import from the producer.
+
+## Chunking
+
+`django_minimal_rag.chunking.chunk_group(documents)` splits the documents
+of a group into chunks, ranked from 0 across the group in the documents'
+order. Each chunk is at most `max_length` long (1000 by default), as
+measured by `length` (`len` by default) — pass a tokenizer's count to
+bound chunks in tokens:
+
+```python
+chunks = chunk_group(documents, max_length=500, length=count_tokens)
+```
+
+Text is split on blank lines first, then between words; chunks do not
+overlap.
 
 ## Requirements
 
