@@ -163,6 +163,18 @@ def test_max_length_below_1_raises_value_error() -> None:
         split_text("A short document.", max_length=0)
 
 
+def note(number: int, *, title: str, text: str) -> SampleDocument:
+    """Note ``number`` of the host project, in English and public."""
+    return SampleDocument(
+        text=text,
+        source_key=f"app.note:{number}",
+        title=title,
+        url=f"https://example.com/notes/{number}/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+
 def test_group_with_no_documents_gives_no_chunks() -> None:
     assert chunk_group([]) == []
 
@@ -175,14 +187,7 @@ def test_each_chunk_of_one_document_holds_the_document_its_text_and_rank() -> No
     assert len(first) <= default_max_length
     assert len(second) <= default_max_length
     assert len(text) > default_max_length
-    document = SampleDocument(
-        text=text,
-        source_key="app.note:1",
-        title="A note",
-        url="https://example.com/notes/1/",
-        language="en",
-        permissions=frozenset(),
-    )
+    document = note(1, title="A note", text=text)
 
     chunks: list[Chunk] = chunk_group([document])
 
@@ -200,22 +205,8 @@ def test_ranks_continue_across_the_documents_of_a_group_in_their_order() -> None
     assert len(first) <= default_max_length
     assert len(second) <= default_max_length
     assert len(f"{first}\n\n{second}") > default_max_length
-    first_document = SampleDocument(
-        text=f"{first}\n\n{second}",
-        source_key="app.note:1",
-        title="A long note",
-        url="https://example.com/notes/1/",
-        language="en",
-        permissions=frozenset(),
-    )
-    second_document = SampleDocument(
-        text=third,
-        source_key="app.note:2",
-        title="A short note",
-        url="https://example.com/notes/2/",
-        language="en",
-        permissions=frozenset(),
-    )
+    first_document = note(1, title="A long note", text=f"{first}\n\n{second}")
+    second_document = note(2, title="A short note", text=third)
 
     chunks = chunk_group([first_document, second_document])
 
@@ -227,30 +218,9 @@ def test_ranks_continue_across_the_documents_of_a_group_in_their_order() -> None
 
 
 def test_document_with_empty_text_gives_no_chunk_and_takes_no_rank() -> None:
-    before = SampleDocument(
-        text="A note before.",
-        source_key="app.note:1",
-        title="Before",
-        url="https://example.com/notes/1/",
-        language="en",
-        permissions=frozenset(),
-    )
-    empty = SampleDocument(
-        text="",
-        source_key="app.note:2",
-        title="Empty",
-        url="https://example.com/notes/2/",
-        language="en",
-        permissions=frozenset(),
-    )
-    after = SampleDocument(
-        text="A note after.",
-        source_key="app.note:3",
-        title="After",
-        url="https://example.com/notes/3/",
-        language="en",
-        permissions=frozenset(),
-    )
+    before = note(1, title="Before", text="A note before.")
+    empty = note(2, title="Empty", text="")
+    after = note(3, title="After", text="A note after.")
 
     chunks = chunk_group([before, empty, after])
 
@@ -262,22 +232,8 @@ def test_document_with_empty_text_gives_no_chunk_and_takes_no_rank() -> None:
 
 def test_max_length_and_length_are_applied_to_every_document_of_the_group() -> None:
     max_words = 2
-    first = SampleDocument(
-        text="alpha beta gamma",
-        source_key="app.note:1",
-        title="First",
-        url="https://example.com/notes/1/",
-        language="en",
-        permissions=frozenset(),
-    )
-    second = SampleDocument(
-        text="delta epsilon zeta theta",
-        source_key="app.note:2",
-        title="Second",
-        url="https://example.com/notes/2/",
-        language="en",
-        permissions=frozenset(),
-    )
+    first = note(1, title="First", text="alpha beta gamma")
+    second = note(2, title="Second", text="delta epsilon zeta theta")
     # Every word is longer than max_words characters: counted in characters,
     # each would be cut.
     assert all(
