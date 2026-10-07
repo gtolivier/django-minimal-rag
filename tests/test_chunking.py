@@ -17,3 +17,9 @@ def test_text_shorter_than_max_length_gives_one_chunk_the_text_itself() -> None:
     assert len(text) < MAX_LENGTH
 
     assert split_text(text, max_length=MAX_LENGTH) == [text]
+
+
+def test_whitespace_around_the_text_is_stripped_from_its_chunk() -> None:
+    text = " \n\tA short document.\n  \t"
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["A short document."]
