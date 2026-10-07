@@ -8,13 +8,18 @@ PARAGRAPH_SEPARATOR = "\n\n"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
 
+DEFAULT_MAX_LENGTH = 1000
+
 Length = Callable[[str], int]
 
 
-def split_text(text: str, *, max_length: int, length: Length = len) -> list[str]:
+def split_text(
+    text: str, *, max_length: int = DEFAULT_MAX_LENGTH, length: Length = len
+) -> list[str]:
     """Split ``text`` into chunks measuring at most ``max_length``.
 
     Sizes are measured by ``length``, which counts characters by default.
+    ``max_length`` defaults to 1000.
     """
     content = text.strip()
     if not content:
