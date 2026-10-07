@@ -48,13 +48,13 @@ jobs:
     services:
       # PostgreSQL with pgvector, the image compose.yaml uses locally.
       postgres:
-        image: pgvector/pgvector:pg18
+        image: pgvector/pgvector:0.8.7-pg18
         env:
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -h localhost -U postgres"
           --health-interval 2s
           --health-retries 15
     # Read by libpq: tests/settings.py leaves the connection to them.

@@ -5,12 +5,12 @@
 #   PGHOST=localhost PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres uv run pytest
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    image: pgvector/pgvector:0.8.7-pg18
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-U", "postgres"]
       interval: 2s
       retries: 15
