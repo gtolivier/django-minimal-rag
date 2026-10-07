@@ -16,6 +16,17 @@ class DocumentWithoutText:
     permissions: AbstractSet[str]
 
 
+@dataclass(frozen=True)
+class DocumentWithoutSourceKey:
+    """Every member of a document except `source_key`."""
+
+    text: str
+    title: str
+    url: str
+    language: str | None
+    permissions: AbstractSet[str]
+
+
 class ReadOnlyDocument:
     """Every member of a document, as a property without a setter."""
 
@@ -81,3 +92,19 @@ def test_class_without_text_is_not_a_document() -> None:
     document: Document = without_text  # type: ignore[assignment]
 
     assert not hasattr(document, "text")
+
+
+def test_class_without_source_key_is_not_a_document() -> None:
+    without_source_key = DocumentWithoutSourceKey(
+        text="Opening hours are 9am to 5pm.",
+        title="Opening hours",
+        url="https://example.test/faq/opening-hours",
+        language="en",
+        permissions=frozenset({"public"}),
+    )
+
+    # The rejection is the behavior under test: mypy must refuse this
+    # assignment, and strict mypy reports the ignore as unused if it does not.
+    document: Document = without_source_key  # type: ignore[assignment]
+
+    assert not hasattr(document, "source_key")
