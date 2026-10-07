@@ -269,6 +269,12 @@ def test_group_with_no_documents_gives_no_chunks() -> None:
     assert chunk_group([]) == []
 
 
+def test_group_max_length_below_1_raises_value_error_even_with_no_documents() -> None:
+    # The limit is refused up front, not only once a document is split by it.
+    with pytest.raises(ValueError, match="max_length"):
+        chunk_group([], max_length=0)
+
+
 def test_each_chunk_of_one_document_holds_the_document_its_text_and_rank() -> None:
     default_max_length = 1000
     first = " ".join(["alpha"] * 100)
