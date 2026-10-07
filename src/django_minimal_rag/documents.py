@@ -8,3 +8,6 @@ class Document(Protocol):
 
     @property
     def text(self) -> str: ...
+
+    @property
+    def source_key(self) -> str: ...
