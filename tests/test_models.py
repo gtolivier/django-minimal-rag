@@ -87,3 +87,19 @@ def test_document_with_a_2000_character_url_reads_back_the_whole_url() -> None:
     stored = Document.objects.get()
 
     assert stored.url == long_url
+
+
+@pytest.mark.django_db
+def test_document_stored_with_permissions_reads_back_the_same_names() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+        permissions=["app.view_note", "app.change_note"],
+    )
+
+    stored = Document.objects.get()
+
+    assert set(stored.permissions) == {"app.view_note", "app.change_note"}

@@ -10,7 +10,9 @@ the test database.
 import os
 
 SECRET_KEY = "tests-only-not-secret"
-INSTALLED_APPS = ["django_minimal_rag"]
+# django.contrib.postgres is a requirement of the package for host projects:
+# its models use PostgreSQL array fields, which need it installed.
+INSTALLED_APPS = ["django.contrib.postgres", "django_minimal_rag"]
 # Plays a host project that still uses AutoField (an older project): the app
 # must choose its own primary key type rather than inherit the project's.
 # Django 6.0+ already defaults to BigAutoField, so the setting is explicit.
