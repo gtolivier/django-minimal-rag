@@ -94,7 +94,7 @@ def _normalize_line_endings(text: str) -> str:
 def _strip_paragraph(paragraph: str) -> str:
     """Strip ``paragraph`` and the whitespace at the end of each of its lines."""
     return LINE_SEPARATOR.join(
-        line.rstrip() for line in paragraph.strip().split(LINE_SEPARATOR)
+        line.rstrip() for line in paragraph.rstrip().split(LINE_SEPARATOR)
     )
 
 
