@@ -6,4 +6,4 @@ class FakeEmbeddings:
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one vector per text."""
-        return [[] for _ in texts]
+        return [[0.0] * 8 for _ in texts]
