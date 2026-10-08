@@ -11,12 +11,13 @@ from pgvector.django import VectorField
 APP_LABEL_MAX_LENGTH = 100
 CODENAME_MAX_LENGTH = 100
 PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENGTH
+SOURCE_KEY_MAX_LENGTH = 500
 
 
 class Source(models.Model):
     """A document source, identified by its key."""
 
-    source_key = models.TextField(unique=True)
+    source_key = models.CharField(max_length=SOURCE_KEY_MAX_LENGTH, unique=True)
 
     def __str__(self) -> str:
         return self.source_key
