@@ -5,7 +5,6 @@ from typing import Any
 
 from django.db import transaction
 
-from django_minimal_rag.chunking import Chunk as TextChunk
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.documents import Document as DocumentProtocol
 from django_minimal_rag.embeddings import Embeddings, get_embeddings
@@ -34,7 +33,12 @@ def _replace_source(
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
-    _store_chunks(chunk_group(documents), stored_documents, embeddings, stored_vectors)
+    pieces = [
+        (stored_document, chunk.text)
+        for document, stored_document in zip(documents, stored_documents, strict=True)
+        for chunk in chunk_group([document])
+    ]
+    _store_chunks(pieces, embeddings, stored_vectors)
 
 
 def _remove_source(source_key: str) -> None:
@@ -54,12 +58,9 @@ def _stored_vectors(source: Source, embedding_model: str) -> dict[str, Any]:
 
 def _store_documents(
     source: Source, documents: Sequence[DocumentProtocol]
-) -> dict[int, Document]:
-    """Store the ``documents`` of ``source``, keyed by the ``id`` of each.
-
-    They are keyed by identity because a document may be unhashable.
-    """
-    stored_documents = Document.objects.bulk_create(
+) -> list[Document]:
+    """Store the ``documents`` of ``source``, one stored document per occurrence."""
+    return Document.objects.bulk_create(
         Document(
             source=source,
             title=document.title,
@@ -69,34 +70,34 @@ def _store_documents(
         )
         for document in documents
     )
-    return {
-        id(document): stored_document
-        for document, stored_document in zip(documents, stored_documents, strict=True)
-    }
 
 
 def _store_chunks(
-    chunks: Sequence[TextChunk],
-    stored_documents: Mapping[int, Document],
+    pieces: Sequence[tuple[Document, str]],
     embeddings: Embeddings,
     stored_vectors: Mapping[str, Any],
 ) -> None:
-    """Store ``chunks`` with their embeddings, each under its stored document."""
-    vectors = _vectors(chunks, embeddings, stored_vectors)
+    """Store the ``pieces`` of text with their embeddings, ranked in order.
+
+    Each piece is a stored document and a text of it.
+    """
+    vectors = _vectors([text for _, text in pieces], embeddings, stored_vectors)
     Chunk.objects.bulk_create(
         Chunk(
-            document=stored_documents[id(chunk.document)],
-            rank=chunk.rank,
-            text=chunk.text,
+            document=stored_document,
+            rank=rank,
+            text=text,
             embedding_model=embeddings.model,
             embedding=vector,
         )
-        for chunk, vector in zip(chunks, vectors, strict=True)
+        for rank, ((stored_document, text), vector) in enumerate(
+            zip(pieces, vectors, strict=True)
+        )
     )
 
 
 def _vectors(
-    chunks: Sequence[TextChunk],
+    texts: Sequence[str],
     embeddings: Embeddings,
     stored_vectors: Mapping[str, Any],
 ) -> list[Any]:
@@ -104,11 +105,9 @@ def _vectors(
 
     A chunk whose text was already embedded by the same model keeps its vector.
     """
-    new_texts = [chunk.text for chunk in chunks if chunk.text not in stored_vectors]
+    new_texts = [text for text in texts if text not in stored_vectors]
     new_vectors = iter(embeddings.embed(new_texts) if new_texts else [])
     return [
-        stored_vectors[chunk.text]
-        if chunk.text in stored_vectors
-        else next(new_vectors)
-        for chunk in chunks
+        stored_vectors[text] if text in stored_vectors else next(new_vectors)
+        for text in texts
     ]
