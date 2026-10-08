@@ -44,6 +44,19 @@ def use_recording_embeddings(settings: "Settings") -> list[str]:
     return embedded
 
 
+def use_call_recording_embeddings(settings: "Settings") -> list[list[str]]:
+    """Configure ``RecordingEmbeddings``; return the list of its ``embed()`` calls.
+
+    Each call is recorded as the list of the texts it was given.
+    """
+    calls: list[list[str]] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.RecordingEmbeddings",
+        "OPTIONS": {"embedded": [], "calls": calls},
+    }
+    return calls
+
+
 def faq_entry(number: int) -> SampleDocument:
     """FAQ entry ``number`` of the host project, in English and public."""
     return SampleDocument(
@@ -446,6 +459,21 @@ def test_replace_re_embeds_a_text_stored_under_another_model(
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded)
     }
+
+
+@pytest.mark.django_db
+def test_replace_of_several_groups_embeds_the_new_texts_of_all_in_one_backend_call(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+
+    Indexer().replace(
+        {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
+    )
+
+    assert calls == [
+        ["Answer to question 1.", "Answer to question 2.", "Answer to question 3."]
+    ]
 
 
 @pytest.mark.django_db

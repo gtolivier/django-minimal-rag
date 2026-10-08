@@ -19,15 +19,23 @@ class RecordingEmbeddings:
     The list is given through the setting's OPTIONS, so it outlives the
     backend instances built on each call. A text's vector is its position in
     that list: embedding the same text again gives it a new vector.
+
+    When a ``calls`` list is given too, each ``embed()`` call also appends the
+    list of the texts it was given to it.
     """
 
     model = "recording"
 
-    def __init__(self, embedded: list[str]) -> None:
+    def __init__(
+        self, embedded: list[str], calls: list[list[str]] | None = None
+    ) -> None:
         self.embedded = embedded
+        self.calls = calls
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Record ``texts`` and return one vector per text."""
+        if self.calls is not None:
+            self.calls.append(list(texts))
         vectors = []
         for text in texts:
             vectors.append([float(len(self.embedded)), 1.0])
