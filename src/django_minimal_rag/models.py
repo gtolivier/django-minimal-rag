@@ -28,7 +28,7 @@ class Document(models.Model):
     source = models.ForeignKey(Source, on_delete=models.CASCADE)
     title = models.TextField()
     url = models.TextField()
-    language = models.CharField(max_length=16, null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
+    language = models.CharField(max_length=35, null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
     permissions = ArrayField(
         models.CharField(max_length=PERMISSION_NAME_MAX_LENGTH), default=list
     )
