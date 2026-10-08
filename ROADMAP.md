@@ -144,6 +144,16 @@ implements.
   model, through a backend it names in a setting; the package ships no
   model of its own, and nothing in it assumes a given provider or vector
   dimension.
+- **Storage.** Three models: `Source` (unique `source_key`) → `Document`
+  (`title`, `url`, `language`, `permissions`) → `Chunk` (`rank`, `text`,
+  `embedding_model`, `embedding`), each deleted with its parent. The
+  vector column has no fixed dimension, and each chunk stores the name of
+  the model that embedded it, so a project chooses its dimension without
+  generating a migration of its own; an HNSW index, which needs a fixed
+  dimension, will be a partial expression index per model, added with
+  retrieval. Permissions are an `ArrayField` of names, so host projects
+  install `django.contrib.postgres`. `title` and `url` are unbounded text.
+  The app's primary keys are `BigAutoField`, set by its `AppConfig`.
 
 ## Open questions
 
@@ -157,11 +167,10 @@ Each one is settled before the feature that needs its answer.
   `url` at runtime — and such documents cannot be indexed — or a citation
   falls back on something else, such as the title or the `source_key`.
 - **Embeddings:** the shape of the setting naming the embedding backend
-  (`{"BACKEND": "…", "OPTIONS": {…}}`, as for the output?), how storage
-  handles a dimension the project chooses — a vector column without a
-  fixed dimension, or one fixed by a migration the project generates —
-  needed before feature 3, and what changing models means for stored
-  vectors (storing the model's name with each vector, for instance).
+  (`{"BACKEND": "…", "OPTIONS": {…}}`, as for the output?), and what
+  changing models means for vectors already stored — re-embedding them, or
+  searching only those of the current model (see "Storage", under
+  "Decisions").
 - **Permission filtering:** documents carry permission names
   (`app_label.codename`). What they mean — all of them required, an empty
   set readable by everyone, as django-model-rag's example
@@ -195,7 +204,7 @@ Provisional: the design pass may reorder, split or merge them.
   bench, without django-model-rag.
 - [x] **2. Chunking.** A document's text split into chunks, each knowing
   its rank within its group.
-- [ ] **3. Storage.** Models for sources and chunks, with their
+- [x] **3. Storage.** Models for sources and chunks, with their
   permissions, their vector field and its migration.
 - [ ] **4. Embeddings.** The embedding backend, chosen by a setting, with a
   fake backend for tests.

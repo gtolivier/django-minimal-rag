@@ -18,7 +18,8 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Only the document Protocol and chunking exist so far: see
+Pre-alpha. Only the document Protocol, chunking and the storage models
+exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -58,12 +59,43 @@ than a chunk exceeding the limit. Whitespace never reaches a chunk unless it
 fits, so it never raises. `length` is expected to grow with the text, as
 `len` and token counts do.
 
+## Storage
+
+The app's models hold what gets indexed:
+
+- `Source` — one group of documents, identified by its unique
+  `source_key`;
+- `Document` — a document of a source: its `title`, `url` (unbounded
+  text), `language` (`None` when unknown) and `permissions` (a list of
+  permission names, empty by default);
+- `Chunk` — a chunk of a document: its `rank`, `text`, the name of the
+  `embedding_model` that produced its `embedding`, and that embedding.
+
+The embedding column has no fixed dimension, so vectors of different
+models, and of different dimensions, are stored side by side; each chunk
+records which model produced it. Deleting a source deletes its documents,
+and deleting a document deletes its chunks. Primary keys are
+`BigAutoField`, whatever the project's `DEFAULT_AUTO_FIELD`.
+
+The app's migration creates the pgvector extension (`CREATE EXTENSION IF
+NOT EXISTS vector`), which needs a database role allowed to create it.
+
 ## Requirements
 
 - Python 3.11+
 - Django 5.2 LTS, 6.0 or 6.1
 - PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector)
   extension
+- `django.contrib.postgres` in `INSTALLED_APPS`, next to the app — its
+  models use PostgreSQL array fields:
+
+  ```python
+  INSTALLED_APPS = [
+      # ...
+      "django.contrib.postgres",
+      "django_minimal_rag",
+  ]
+  ```
 
 ## Development
 
