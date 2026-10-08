@@ -70,6 +70,24 @@ def test_document_stored_without_a_language_reads_back_none(source: Source) -> N
 
 
 @pytest.mark.django_db
+def test_document_with_a_19_character_language_tag_reads_back_the_whole_tag(
+    source: Source,
+) -> None:
+    long_tag = "sl-rozaj-biske-1994"
+    assert len(long_tag) == 19
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language=long_tag,
+    )
+
+    stored = Document.objects.get()
+
+    assert stored.language == long_tag
+
+
+@pytest.mark.django_db
 def test_document_with_a_2000_character_title_reads_back_the_whole_title(
     source: Source,
 ) -> None:
