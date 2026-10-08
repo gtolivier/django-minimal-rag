@@ -168,6 +168,20 @@ def test_replace_with_an_empty_group_for_an_unknown_key_stores_nothing() -> None
 
 
 @pytest.mark.django_db
+def test_replace_with_only_empty_groups_removes_sources_without_a_backend_configured(
+    settings: "Settings",
+) -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    Indexer().replace({"faq:1": [], "faq:2": []})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
 def test_replace_leaves_sources_absent_from_the_call_as_they_are() -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
     source = Source.objects.get()
