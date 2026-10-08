@@ -477,6 +477,24 @@ def test_replace_of_several_groups_embeds_the_new_texts_of_all_in_one_backend_ca
 
 
 @pytest.mark.django_db
+def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
+    settings: "Settings",
+) -> None:
+    embedded = use_recording_embeddings(settings)
+    shared_text = "Shared answer."
+    entry_1 = dataclasses.replace(faq_entry(1), text=shared_text)
+    entry_2 = dataclasses.replace(faq_entry(2), text=shared_text)
+
+    Indexer().replace({"faq:1": [entry_1], "faq:2": [entry_2]})
+
+    assert embedded == [shared_text]
+    assert {
+        chunk.document.source.source_key: list(chunk.embedding)
+        for chunk in Chunk.objects.select_related("document__source")
+    } == {"faq:1": [0.0, 1.0], "faq:2": [0.0, 1.0]}
+
+
+@pytest.mark.django_db
 def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
     settings: "Settings",
 ) -> None:
