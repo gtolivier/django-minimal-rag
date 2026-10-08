@@ -11,6 +11,7 @@ from django.utils.module_loading import import_string
 FAKE_EMBEDDINGS_DEFAULT_DIMENSION = 8
 EMBEDDINGS_SETTING = "MINIMAL_RAG_EMBEDDINGS"
 BACKEND_KEY = "BACKEND"
+OPTIONS_KEY = "OPTIONS"
 
 
 class Embeddings(Protocol):
@@ -51,7 +52,7 @@ def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
     config = _embeddings_config()
     backend = _import_backend(_backend_path(config))
-    return backend(**config.get("OPTIONS", {}))
+    return backend(**config.get(OPTIONS_KEY, {}))
 
 
 def _embeddings_config() -> dict[str, Any]:
