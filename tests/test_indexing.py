@@ -69,6 +69,11 @@ def faq_entry(number: int) -> SampleDocument:
     )
 
 
+def faq_entry_under(source_key: str, number: int) -> SampleDocument:
+    """FAQ entry ``number``, belonging to the source ``source_key``."""
+    return dataclasses.replace(faq_entry(number), source_key=source_key)
+
+
 def paragraphs_of_one_chunk_each(count: int) -> list[str]:
     """``count`` paragraphs, each too long to share a chunk with another."""
     return [f"Paragraph {number}: " + "word " * 120 for number in range(count)]
@@ -153,7 +158,7 @@ def test_replace_stores_each_group_under_its_own_source() -> None:
     Indexer().replace(
         {
             "faq:1": [faq_entry(1)],
-            "faq:2": [faq_entry(2), faq_entry(3)],
+            "faq:2": [faq_entry(2), faq_entry_under("faq:2", 3)],
         }
     )
 
@@ -173,7 +178,9 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
     Indexer().replace({"faq:1": [faq_entry(1)]})
     source_pk = Source.objects.get().pk
 
-    Indexer().replace({"faq:1": [faq_entry(2), faq_entry(3)]})
+    Indexer().replace(
+        {"faq:1": [faq_entry_under("faq:1", 2), faq_entry_under("faq:1", 3)]}
+    )
 
     assert list(Source.objects.values_list("pk", "source_key")) == [
         (source_pk, "faq:1")
@@ -190,7 +197,7 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
 
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     Indexer().replace({"faq:1": []})
 
@@ -343,7 +350,7 @@ def test_replace_stores_a_document_given_twice_in_a_group_twice_with_its_chunks(
 def test_replace_stores_all_documents_and_chunks_of_a_group_iterable_only_once() -> (
     None
 ):
-    group = SinglePassSequence([faq_entry(1), faq_entry(2)])
+    group = SinglePassSequence([faq_entry(1), faq_entry_under("faq:1", 2)])
 
     Indexer().replace({"faq:1": group})
 
@@ -401,13 +408,13 @@ def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     }
     embedded_before = len(embedded)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert embedded[embedded_before:] == []
     assert {
@@ -420,14 +427,26 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2), faq_entry(3)]})
+    Indexer().replace(
+        {
+            "faq:1": [
+                faq_entry(1),
+                faq_entry_under("faq:1", 2),
+                faq_entry_under("faq:1", 3),
+            ]
+        }
+    )
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     }
     embedded_before = len(embedded)
-    changed_entry = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
+    changed_entry = dataclasses.replace(
+        faq_entry_under("faq:1", 2), text="New answer to question 2."
+    )
 
-    Indexer().replace({"faq:1": [faq_entry(1), changed_entry, faq_entry(3)]})
+    Indexer().replace(
+        {"faq:1": [faq_entry(1), changed_entry, faq_entry_under("faq:1", 3)]}
+    )
 
     assert embedded[embedded_before:] == ["New answer to question 2."]
     vectors_after = {chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()}
@@ -446,10 +465,10 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
 def test_replace_re_embeds_a_text_stored_under_another_model(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     embedded = use_recording_embeddings(settings)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert sorted(embedded) == ["Answer to question 1.", "Answer to question 2."]
     assert {
@@ -554,6 +573,19 @@ def test_replace_raises_when_the_backend_returns_too_many_vectors(
         Indexer().replace({"faq:1": [faq_entry(1)]})
 
 
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_for_a_document_of_another_source_key() -> (
+    None
+):
+    # Both keys, in any order and wording: the group's and the document's.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:1\b)(?=.*\bfaq:2\b)"):
+        Indexer().replace({"faq:1": [faq_entry(2)]})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
 @pytest.mark.django_db(transaction=True)
 def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
     None
@@ -570,7 +602,7 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
     probe = f"SELECT 1 FROM {table} WHERE id = %s FOR SHARE NOWAIT"
     try:
         with transaction.atomic():
-            Indexer().replace({"faq:1": [faq_entry(2)]})
+            Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
 
             with (
                 pytest.raises(OperationalError) as raised,
