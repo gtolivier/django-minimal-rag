@@ -9,7 +9,7 @@ from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
-from tests.documents import SampleDocument
+from tests.documents import MutableDocument, SampleDocument
 from tests.embeddings import EmbeddingFailedError
 from tests.sequences import SinglePassSequence
 
@@ -290,6 +290,27 @@ def test_replace_stores_all_documents_and_chunks_of_a_group_iterable_only_once()
     assert sorted(Chunk.objects.values_list("document__title", "text")) == [
         ("Question 1", "Answer to question 1."),
         ("Question 2", "Answer to question 2."),
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_stores_an_unhashable_document_with_its_chunks() -> None:
+    document = MutableDocument(
+        text="Answer to question 1.",
+        source_key="faq:1",
+        title="Question 1",
+        url="https://example.com/faq/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    Indexer().replace({"faq:1": [document]})
+
+    assert list(
+        Document.objects.values_list("source__source_key", "title", "url", "language")
+    ) == [("faq:1", "Question 1", "https://example.com/faq/1/", "en")]
+    assert list(Chunk.objects.values_list("document__title", "rank", "text")) == [
+        ("Question 1", 0, "Answer to question 1.")
     ]
 
 
