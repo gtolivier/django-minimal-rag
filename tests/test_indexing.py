@@ -98,6 +98,31 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
 
 
 @pytest.mark.django_db
+def test_replace_leaves_sources_absent_from_the_call_as_they_are() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    source = Source.objects.get()
+    document = Document.objects.get()
+    chunk = Chunk.objects.get()
+
+    Indexer().replace({"faq:2": [faq_entry(2)]})
+
+    assert Source.objects.filter(source_key="faq:1").get().pk == source.pk
+    assert list(
+        Document.objects.filter(source=source).values_list(
+            "pk", "title", "url", "language", "permissions"
+        )
+    ) == [(document.pk, "Question 1", "https://example.com/faq/1/", "en", [])]
+    kept_chunk = Chunk.objects.filter(document__source=source).get()
+    assert (kept_chunk.pk, kept_chunk.rank, kept_chunk.text) == (
+        chunk.pk,
+        chunk.rank,
+        chunk.text,
+    )
+    assert kept_chunk.embedding_model == chunk.embedding_model
+    assert list(kept_chunk.embedding) == list(chunk.embedding)
+
+
+@pytest.mark.django_db
 def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> None:
     document = SampleDocument(
         text="Answer to question 1.",
