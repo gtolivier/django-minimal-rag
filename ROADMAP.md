@@ -159,8 +159,12 @@ implements.
 
 Each one is settled before the feature that needs its answer.
 
-- **Unknown language:** what a document's `language` of `None` means —
-  falling back on `LANGUAGE_CODE` or not.
+- **Language:** what a document's `language` of `None` means — falling
+  back on `LANGUAGE_CODE` or not — and how languages are compared. Storage
+  keeps the producer's tag as it is, unbounded; but Django writes `fr-fr`
+  where BCP 47's canonical form is `fr-FR`, and some tags carry a script
+  (`zh-hans`, `sr-latn`) rather than a region. The feature that first reads
+  `language` decides its canonical form and where it is normalized.
 - **Citations:** how a document without a URL is cited. django-model-rag
   gives an empty `url` (`""`) to a model with no URL source, and the
   Protocol's `url: str` accepts it, so either indexing rejects an empty
@@ -209,7 +213,17 @@ Provisional: the design pass may reorder, split or merge them.
 - [ ] **4. Embeddings.** The embedding backend, chosen by a setting, with a
   fake backend for tests.
 - [ ] **5. `replace()`.** Groups replaced in a transaction; empty groups
-  removed; unchanged texts not re-embedded.
+  removed; unchanged texts not re-embedded. Two points left open by
+  feature 3's review:
+  - a protocol document's `permissions` is an `AbstractSet[str]`, which
+    psycopg cannot store in the `ArrayField` as it is (a `frozenset` raises
+    `ProgrammingError`): `replace()` converts it, and a test passes a
+    `frozenset`;
+  - nothing in the database keeps a document's chunks from being stored
+    twice, by a retried or repeated write. Decide whether a constraint
+    enforces it, and on what — chunks are identified by their text within
+    their group, not by their rank — or whether the transaction that
+    replaces whole groups is enough.
 - [ ] **6. `prune()`.** Sources of a model that are not kept are removed.
 - [ ] **7. Retrieval.** The nearest chunks to a question that the user
   may read, within the relevance threshold. Permission filtering is part of
