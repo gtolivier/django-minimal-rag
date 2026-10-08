@@ -88,3 +88,7 @@ def test_fake_embeddings_with_zero_dimensions_raise_value_error() -> None:
 
 def test_fake_embeddings_model_is_fake_8() -> None:
     assert FakeEmbeddings().model == "fake-8"
+
+
+def test_fake_embeddings_with_three_dimensions_model_is_fake_3() -> None:
+    assert FakeEmbeddings(dimensions=3).model == "fake-3"
