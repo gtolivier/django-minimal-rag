@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 from django.db import DataError, IntegrityError
 
+from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.models import Chunk, Document, Source
 
 
@@ -298,6 +299,21 @@ def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side(
 
     assert list(small.embedding) == [0.5, -1.0, 0.25]
     assert list(large.embedding) == [0.5, -1.0, 0.25, 2.0, -0.125]
+
+
+@pytest.mark.django_db
+def test_chunk_stored_with_a_fake_embedding_reads_back_the_same_vector(
+    document: Document,
+) -> None:
+    # pgvector stores single-precision floats: the fake's vectors survive the
+    # round trip only if each component is exactly representable in float32.
+    embeddings = FakeEmbeddings()
+    [vector] = embeddings.embed(["The shop opens at 9 am."])
+    create_chunk(document, embedding_model=embeddings.model, embedding=vector)
+
+    stored = Chunk.objects.get()
+
+    assert list(stored.embedding) == vector
 
 
 @pytest.mark.django_db
