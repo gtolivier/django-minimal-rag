@@ -121,8 +121,9 @@ implements.
   too, to be retried with backoff: the producer cannot tell which
   exceptions are transient (not implemented yet, see "Retries" below).
 - **Concurrent `replace()` calls are serialized by a row lock, not a
-  constraint.** `replace()` locks the row of each source it replaces
-  (`select_for_update`) until its transaction ends, so two calls for the
+  constraint.** `replace()` locks the row of each source it replaces or
+  removes (`select_for_update`), before changing anything of it, until its
+  transaction ends, so two calls for the
   same source, from two quick saves, run one after the other. No
   uniqueness constraint covers chunks: a concurrent call would duplicate
   whole documents, which a constraint on chunks would not catch, and
@@ -250,6 +251,9 @@ Provisional: the design pass may reorder, split or merge them.
   the first retrieval, never added afterwards.
 - [ ] **8. Cited answers.** The LLM answers from the retrieved chunks, with
   citations to their sources.
+- [ ] **9. Vectors reused across sources (optional, may be dropped).** A
+  text already stored by the current model in another source of the same
+  `replace()` call keeps that vector instead of being embedded again.
 
 ## Not planned here
 

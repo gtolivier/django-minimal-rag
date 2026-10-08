@@ -113,7 +113,9 @@ a `typing.Protocol`:
 - `model` (`str`) — the name of the model it embeds with, stored with each
   chunk;
 - `embed(texts)` — takes a `Sequence[str]` and returns one vector, a
-  `list[float]`, per text, in the same order.
+  `list[float]`, per text, in the same order. `replace()` sends all its
+  new texts in one call, however many: a backend whose API limits the
+  size of a request splits them into batches itself.
 
 Changing models does not mix vectors: a chunk embedded by another model
 than the current backend's is re-embedded by `replace()`, and retrieval
@@ -162,11 +164,12 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
   without `MINIMAL_RAG_EMBEDDINGS`.
 - A call is one transaction, embedding included: if the backend raises,
   the exception propagates and nothing of the call is stored. The row of
-  each replaced source is locked (`SELECT … FOR UPDATE`) until the
-  transaction ends, so two calls replacing the same source run one after
-  the other instead of interleaving their documents. The rows are locked
-  in sorted `source_key` order, so two calls sharing several sources do
-  not deadlock, whatever the order of their `groups`.
+  each replaced or removed source is locked (`SELECT … FOR UPDATE`) before
+  anything of it changes, until the transaction ends, so two calls on the
+  same source run one after the other instead of interleaving their
+  documents. The rows are locked in sorted `source_key` order, so two
+  calls sharing several sources do not deadlock, whatever the order of
+  their `groups`.
 - `ValueError` is raised, and nothing of the call is stored, when a
   document's `source_key` differs from the key of its group (the message
   names both keys), and when the backend returns another number of vectors
