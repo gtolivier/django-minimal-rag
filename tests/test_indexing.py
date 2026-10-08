@@ -259,6 +259,22 @@ def test_replace_stores_each_document_of_a_group_with_its_chunks_ranked_across()
 
 
 @pytest.mark.django_db
+def test_replace_stores_a_document_given_twice_in_a_group_twice_with_its_chunks() -> (
+    None
+):
+    entry = faq_entry(1)
+
+    Indexer().replace({"faq:1": [entry, entry]})
+
+    first, second = Document.objects.order_by("pk")
+    stored = Chunk.objects.order_by("rank")
+    assert list(stored.values_list("document", "rank", "text")) == [
+        (first.pk, 0, "Answer to question 1."),
+        (second.pk, 1, "Answer to question 1."),
+    ]
+
+
+@pytest.mark.django_db
 def test_replace_embeds_each_chunk_with_the_configured_backend(
     settings: "Settings",
 ) -> None:
