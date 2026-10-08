@@ -25,3 +25,12 @@ def test_fake_embeddings_of_two_different_texts_are_different_vectors() -> None:
     first, second = FakeEmbeddings().embed(["a text", "another text"])
 
     assert first != second
+
+
+def test_fake_embeddings_returns_one_vector_per_text_in_the_texts_order() -> None:
+    embeddings = FakeEmbeddings()
+    [short_vector] = embeddings.embed(["a"])
+    [long_vector] = embeddings.embed(["a longer text"])
+
+    assert embeddings.embed(["a", "a longer text"]) == [short_vector, long_vector]
+    assert embeddings.embed(["a longer text", "a"]) == [long_vector, short_vector]
