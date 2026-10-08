@@ -15,15 +15,15 @@ from django_minimal_rag.models import Chunk, Document, Source
 class Indexer:
     """Stores documents, chunks and embeddings."""
 
+    @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
         embeddings = get_embeddings()
-        with transaction.atomic():
-            for source_key, documents in groups.items():
-                if documents:
-                    _replace_source(source_key, documents, embeddings)
-                else:
-                    _remove_source(source_key)
+        for source_key, documents in groups.items():
+            if documents:
+                _replace_source(source_key, documents, embeddings)
+            else:
+                _remove_source(source_key)
 
 
 def _replace_source(
