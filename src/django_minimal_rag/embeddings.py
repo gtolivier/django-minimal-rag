@@ -9,6 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
 FAKE_EMBEDDINGS_DEFAULT_DIMENSION = 8
+FAKE_EMBEDDINGS_MIN_DIMENSION = 2
 EMBEDDINGS_SETTING = "MINIMAL_RAG_EMBEDDINGS"
 BACKEND_KEY = "BACKEND"
 OPTIONS_KEY = "OPTIONS"
@@ -31,8 +32,8 @@ class FakeEmbeddings:
     """Deterministic embeddings for tests."""
 
     def __init__(self, dimensions: int = FAKE_EMBEDDINGS_DEFAULT_DIMENSION) -> None:
-        if dimensions <= 0:
-            msg = "dimensions must be positive"
+        if dimensions < FAKE_EMBEDDINGS_MIN_DIMENSION:
+            msg = f"dimensions must be at least {FAKE_EMBEDDINGS_MIN_DIMENSION}"
             raise ValueError(msg)
         self.dimensions = dimensions
         self.model = f"fake-{dimensions}"
