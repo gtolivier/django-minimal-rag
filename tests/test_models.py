@@ -352,6 +352,23 @@ def test_chunk_without_an_embedding_cannot_be_stored(document: Document) -> None
 
 
 @pytest.mark.django_db
+def test_str_of_a_chunk_with_an_80_character_text_is_its_text(
+    document: Document,
+) -> None:
+    text = ("The shop opens at 9 am. " * 4)[:80]
+    assert len(text) == 80
+    chunk = Chunk.objects.create(
+        document=document,
+        rank=0,
+        text=text,
+        embedding_model="text-embedding-3-small",
+        embedding=[0.5, -1.0, 0.25],
+    )
+
+    assert str(chunk) == text
+
+
+@pytest.mark.django_db
 def test_deleting_a_document_deletes_its_chunks(document: Document) -> None:
     Chunk.objects.create(
         document=document,
