@@ -43,7 +43,12 @@ class FakeEmbeddings:
 def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
     config = _embeddings_config()
-    backend: type[Embeddings] = import_string(_backend_path(config))
+    backend_path = _backend_path(config)
+    try:
+        backend: type[Embeddings] = import_string(backend_path)
+    except ImportError as error:
+        msg = f"Cannot import the embeddings backend {backend_path!r}."
+        raise ImproperlyConfigured(msg) from error
     return backend(**config.get("OPTIONS", {}))
 
 
