@@ -3,6 +3,8 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from django.db import transaction
+
 from django_minimal_rag.chunking import Chunk as TextChunk
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.documents import Document as DocumentProtocol
@@ -16,11 +18,12 @@ class Indexer:
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
         embeddings = get_embeddings()
-        for source_key, documents in groups.items():
-            if documents:
-                _replace_source(source_key, documents, embeddings)
-            else:
-                _remove_source(source_key)
+        with transaction.atomic():
+            for source_key, documents in groups.items():
+                if documents:
+                    _replace_source(source_key, documents, embeddings)
+                else:
+                    _remove_source(source_key)
 
 
 def _replace_source(
