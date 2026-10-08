@@ -52,3 +52,20 @@ def test_document_stored_without_a_language_reads_back_none() -> None:
     stored = Document.objects.get()
 
     assert stored.language is None
+
+
+@pytest.mark.django_db
+def test_document_with_a_2000_character_title_reads_back_the_whole_title() -> None:
+    long_title = ("Opening hours " * 143)[:2000]
+    assert len(long_title) == 2000
+    source = Source.objects.create(source_key="faq:opening-hours")
+    Document.objects.create(
+        source=source,
+        title=long_title,
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+
+    stored = Document.objects.get()
+
+    assert stored.title == long_title
