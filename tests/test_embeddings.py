@@ -182,3 +182,14 @@ def test_get_embeddings_without_a_backend_raises_improperly_configured(
 
     with pytest.raises(ImproperlyConfigured):
         get_embeddings()
+
+
+def test_get_embeddings_with_an_unimportable_backend_raises_improperly_configured(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.NoSuchEmbeddings",
+    }
+
+    with pytest.raises(ImproperlyConfigured):
+        get_embeddings()
