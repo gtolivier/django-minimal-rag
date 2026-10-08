@@ -147,9 +147,10 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
 ```
 
 - Each group replaces everything stored under its `source_key`: its
-  documents are chunked with `chunk_group` (default options), embedded
-  with the backend `MINIMAL_RAG_EMBEDDINGS` configures, and stored;
-  sources absent from the call are left as they are.
+  documents are chunked as `chunk_group` chunks them (default options),
+  embedded with the backend `MINIMAL_RAG_EMBEDDINGS` configures, and
+  stored; sources absent from the call are left as they are. A document
+  given twice in a group is stored twice, each time with its own chunks.
 - An empty group removes its source, with its documents and chunks; for a
   key that is not stored, it does nothing.
 - A chunk whose text is already stored in its source, embedded by the
