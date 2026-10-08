@@ -102,13 +102,10 @@ def _strip_lines(paragraph: str) -> str:
     )
 
 
-def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
-    """Raise ``ValueError`` if a non-whitespace character of ``text`` does not fit.
-
-    Whitespace never reaches a chunk alone: words are cut around it.
-    """
-    for character in dict.fromkeys(text):
-        if not character.isspace() and not limit.fits(character):
+def _require_every_character_fits(word: str, *, limit: _SizeLimit) -> None:
+    """Raise ``ValueError`` if a character of ``word`` does not fit ``limit``."""
+    for character in dict.fromkeys(word):
+        if not limit.fits(character):
             msg = (
                 f"character {character!r} measures {limit.length(character)}, "
                 f"more than max_length ({limit.max_length})"
@@ -178,8 +175,8 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
 def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     """The longest prefix of ``text`` that fits ``limit``.
 
-    The first character of ``text`` must fit ``limit``, as ``split_text``
-    checks every non-whitespace character does: the prefix is never empty, so
+    The first character of ``text`` must fit ``limit``, as ``_cut_word``
+    checks every character of the word does: the prefix is never empty, so
     cutting a word always moves forward.
 
     The search is bracketed first, so every measured prefix stays within twice
