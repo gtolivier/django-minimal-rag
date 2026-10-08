@@ -102,17 +102,6 @@ def _strip_lines(paragraph: str) -> str:
     )
 
 
-def _require_every_character_fits(word: str, *, limit: _SizeLimit) -> None:
-    """Raise ``ValueError`` if a character of ``word`` does not fit ``limit``."""
-    for character in dict.fromkeys(word):
-        if not limit.fits(character):
-            msg = (
-                f"character {character!r} measures {limit.length(character)}, "
-                f"more than max_length ({limit.max_length})"
-            )
-            raise ValueError(msg)
-
-
 def _pack_splitting_oversized(
     pieces: list[str],
     *,
@@ -162,7 +151,6 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
     """Cut ``word`` into its longest prefixes that fit ``limit``, unless it fits."""
     if limit.fits(word):
         return [word]
-    _require_every_character_fits(word, limit=limit)
     pieces: list[str] = []
     rest = word
     while rest:
@@ -175,9 +163,8 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
 def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     """The longest prefix of ``text`` that fits ``limit``.
 
-    The first character of ``text`` must fit ``limit``, as ``_cut_word``
-    checks every character of the word does: the prefix is never empty, so
-    cutting a word always moves forward.
+    The prefix is never empty, so cutting a word always moves forward: a first
+    character of ``text`` that does not fit ``limit`` raises ``ValueError``.
 
     The search is bracketed first, so every measured prefix stays within twice
     the size of the result, however long ``text`` is.
@@ -197,12 +184,24 @@ def _bracket_longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> tuple[in
 
     The prefix of the first size fits; that of the second, larger one does
     not, or would go past the end of ``text``. They are found by doubling the
-    size from 1, the first character being known to fit.
+    size from 1, once ``_require_first_character_fits`` has checked it.
     """
+    _require_first_character_fits(text, limit=limit)
     fitting = 1
     while fitting * 2 <= len(text) and limit.fits(text[: fitting * 2]):
         fitting *= 2
     return fitting, min(fitting * 2, len(text) + 1)
+
+
+def _require_first_character_fits(text: str, *, limit: _SizeLimit) -> None:
+    """Raise ``ValueError`` if the first character of ``text`` exceeds ``limit``."""
+    character = text[:1]
+    if not limit.fits(character):
+        msg = (
+            f"character {character!r} measures {limit.length(character)}, "
+            f"more than max_length ({limit.max_length})"
+        )
+        raise ValueError(msg)
 
 
 def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
