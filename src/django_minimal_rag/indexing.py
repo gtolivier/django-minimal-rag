@@ -17,15 +17,18 @@ class Indexer:
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
-        embeddings = get_embeddings() if any(groups.values()) else None
+        if not any(groups.values()):
+            for source_key in sorted(groups):
+                _remove_source(source_key)
+            return
+        embeddings = get_embeddings()
         plans = []
         for source_key, documents in sorted(groups.items()):
-            if documents and embeddings:
+            if documents:
                 plans.append(_prepare_source(source_key, documents, embeddings))
             else:
                 _remove_source(source_key)
-        if embeddings:
-            _store_all_chunks(plans, embeddings)
+        _store_all_chunks(plans, embeddings)
 
 
 class _Plan(NamedTuple):
