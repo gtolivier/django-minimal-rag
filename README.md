@@ -18,8 +18,8 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Only the document Protocol, chunking and the storage models
-exist so far: see
+Pre-alpha. Only the document Protocol, chunking, the storage models and
+the embedding backend setting exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -86,6 +86,52 @@ role that is not, have a database administrator run `CREATE EXTENSION
 vector` first: the migration then leaves it as it is. Rolling the app's
 migrations back leaves the extension installed, since other apps may use
 it.
+
+## Embeddings
+
+The project chooses its embedding model: the package ships none. Name a
+backend class in the `MINIMAL_RAG_EMBEDDINGS` setting, with the keyword
+arguments to build it with:
+
+```python
+MINIMAL_RAG_EMBEDDINGS = {
+    "BACKEND": "myproject.embeddings.OpenAIEmbeddings",
+    "OPTIONS": {"model": "text-embedding-3-small"},
+}
+```
+
+`django_minimal_rag.embeddings.get_embeddings()` imports `BACKEND` and
+builds `BACKEND(**OPTIONS)` anew on every call, so a backend holds nothing
+costly to build per instance; `OPTIONS` is optional. A missing setting, a
+setting without `BACKEND` or a `BACKEND` that cannot be imported raises
+`ImproperlyConfigured`.
+
+A backend is any class shaped like `django_minimal_rag.embeddings.Embeddings`,
+a `typing.Protocol`:
+
+- `model` (`str`) — the name of the model it embeds with, stored with each
+  chunk;
+- `embed(texts)` — takes a `Sequence[str]` and returns one vector, a
+  `list[float]`, per text, in the same order.
+
+Changing models does not mix vectors: a chunk embedded by another model
+than the current backend's is re-embedded by `replace()`, and retrieval
+only reads chunks of the current model (both features to come).
+
+`django_minimal_rag.embeddings.FakeEmbeddings` is a backend for tests: no
+network, no model, deterministic across runs and processes. Its
+`dimensions` option (8 by default, at least 1) sets the length of its
+vectors, and its `model` is `fake-<dimensions>`. Different texts get
+different vectors, but their components are all positive, so any two
+vectors are close: it suits tests that look a text up by its own vector,
+not tests of semantic similarity.
+
+```python
+MINIMAL_RAG_EMBEDDINGS = {
+    "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+    "OPTIONS": {"dimensions": 3},
+}
+```
 
 ## Requirements
 

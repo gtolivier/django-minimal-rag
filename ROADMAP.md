@@ -144,6 +144,19 @@ implements.
   model, through a backend it names in a setting; the package ships no
   model of its own, and nothing in it assumes a given provider or vector
   dimension.
+- **The embedding backend is built from a setting, on every use.**
+  `MINIMAL_RAG_EMBEDDINGS = {"BACKEND": "…", "OPTIONS": {…}}`, the shape of
+  django-model-rag's output setting: `get_embeddings()` builds
+  `BACKEND(**OPTIONS)` each time, and raises `ImproperlyConfigured` when
+  the setting, its `BACKEND`, or the class it names is missing. A backend
+  satisfies the `Embeddings` Protocol: a `model` name and `embed(texts)`,
+  one vector per text. The package ships `FakeEmbeddings`, deterministic
+  and with a `dimensions` option, for its tests and the projects'.
+- **Changing embedding models re-embeds.** `replace()` treats a chunk
+  embedded by another model than the current backend's as changed, and
+  re-embeds it even when its text is the same; retrieval reads only the
+  chunks of the current model. A source no producer replaces after the
+  change is therefore not found until it is re-indexed.
 - **Storage.** Three models: `Source` (unique `source_key`) → `Document`
   (`title`, `url`, `language`, `permissions`) → `Chunk` (`rank`, `text`,
   `embedding_model`, `embedding`), each deleted with its parent. The
@@ -173,11 +186,6 @@ Each one is settled before the feature that needs its answer.
   Protocol's `url: str` accepts it, so either indexing rejects an empty
   `url` at runtime — and such documents cannot be indexed — or a citation
   falls back on something else, such as the title or the `source_key`.
-- **Embeddings:** the shape of the setting naming the embedding backend
-  (`{"BACKEND": "…", "OPTIONS": {…}}`, as for the output?), and what
-  changing models means for vectors already stored — re-embedding them, or
-  searching only those of the current model (see "Storage", under
-  "Decisions").
 - **Permission filtering:** documents carry permission names
   (`app_label.codename`). What they mean — all of them required, an empty
   set readable by everyone, as django-model-rag's example
@@ -213,7 +221,7 @@ Provisional: the design pass may reorder, split or merge them.
   its rank within its group.
 - [x] **3. Storage.** Models for sources and chunks, with their
   permissions, their vector field and its migration.
-- [ ] **4. Embeddings.** The embedding backend, chosen by a setting, with a
+- [x] **4. Embeddings.** The embedding backend, chosen by a setting, with a
   fake backend for tests.
 - [ ] **5. `replace()`.** Groups replaced in a transaction; empty groups
   removed; unchanged texts not re-embedded. Two points left open by
