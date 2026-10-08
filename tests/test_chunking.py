@@ -305,6 +305,23 @@ def test_cutting_a_long_word_calls_length_a_bounded_number_of_times() -> None:
     assert calls <= max_calls
 
 
+def test_one_paragraph_that_fits_calls_length_exactly_once() -> None:
+    text = "A short document."
+    assert len(text) < MAX_LENGTH
+    measured: list[str] = []
+
+    def recording_len(text: str) -> int:
+        measured.append(text)
+        return len(text)
+
+    # The paragraph fits as a whole: measuring it once is enough, and no
+    # character of it needs measuring on its own.
+    chunks = split_text(text, max_length=MAX_LENGTH, length=recording_len)
+
+    assert chunks == [text]
+    assert measured == [text]
+
+
 def note(number: int, *, title: str, text: str) -> SampleDocument:
     """Note ``number`` of the host project, in English and public."""
     return SampleDocument(
