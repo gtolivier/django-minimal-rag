@@ -148,7 +148,8 @@ implements.
   `MINIMAL_RAG_EMBEDDINGS = {"BACKEND": "…", "OPTIONS": {…}}`, the shape of
   django-model-rag's output setting: `get_embeddings()` builds
   `BACKEND(**OPTIONS)` each time, and raises `ImproperlyConfigured` when
-  the setting, its `BACKEND`, or the class it names is missing. A backend
+  the setting, its `BACKEND`, or the class it names is missing or
+  malformed. A backend
   satisfies the `Embeddings` Protocol: a `model` name and `embed(texts)`,
   one vector per text. The package ships `FakeEmbeddings`, deterministic
   and with a `dimensions` option, for its tests and the projects'.

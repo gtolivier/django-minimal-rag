@@ -102,9 +102,10 @@ MINIMAL_RAG_EMBEDDINGS = {
 
 `django_minimal_rag.embeddings.get_embeddings()` imports `BACKEND` and
 builds `BACKEND(**OPTIONS)` anew on every call, so a backend holds nothing
-costly to build per instance; `OPTIONS` is optional. A missing setting, a
-setting without `BACKEND` or a `BACKEND` that cannot be imported raises
-`ImproperlyConfigured`.
+costly to build per instance; `OPTIONS` is optional. It raises
+`ImproperlyConfigured` when the setting is missing or not a mapping, when
+`BACKEND` is missing, not a string or cannot be imported, and when
+`OPTIONS` is not a mapping.
 
 A backend is any class shaped like `django_minimal_rag.embeddings.Embeddings`,
 a `typing.Protocol`:
@@ -124,7 +125,9 @@ network, no model, deterministic across runs and processes. Its
 vectors, and its `model` is `fake-<dimensions>`. Different texts get
 different vectors, but their components are all positive, so any two
 vectors are close: it suits tests that look a text up by its own vector,
-not tests of semantic similarity.
+not tests of semantic similarity. Its components are whole numbers below
+`2**24`, exact in single precision, so a vector stored in a chunk's
+`embedding` reads back equal.
 
 ```python
 MINIMAL_RAG_EMBEDDINGS = {
