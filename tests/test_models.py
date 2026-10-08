@@ -118,3 +118,24 @@ def test_document_stored_without_permissions_reads_back_no_permissions() -> None
     stored = Document.objects.get()
 
     assert set(stored.permissions) == set()
+
+
+@pytest.mark.django_db
+def test_deleting_a_source_deletes_its_documents() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+    Document.objects.create(
+        source=source,
+        title="Holiday hours",
+        url="https://example.com/faq/holiday-hours",
+        language="en",
+    )
+
+    source.delete()
+
+    assert not Document.objects.exists()
