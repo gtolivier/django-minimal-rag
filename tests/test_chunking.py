@@ -144,6 +144,15 @@ def test_spaces_and_tabs_around_each_line_of_a_paragraph_are_stripped() -> None:
     ]
 
 
+def test_unicode_whitespace_at_the_end_of_each_line_is_stripped() -> None:
+    # A NO-BREAK SPACE, an IDEOGRAPHIC SPACE and an EM SPACE before each line
+    # break, inside a single paragraph: whitespace, but neither a space nor a tab.
+    text = "a\N{NO-BREAK SPACE}\nb\N{IDEOGRAPHIC SPACE}\nc\N{EM SPACE}\nd"
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["a\nb\nc\nd"]
+
+
 def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
     text = "alpha beta gamma delta epsilon"
     max_length = 12
