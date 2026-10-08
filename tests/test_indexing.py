@@ -2,6 +2,8 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 import pytest
+from django.db import DEFAULT_DB_ALIAS, OperationalError, connections, transaction
+from psycopg.errors import LockNotAvailable
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
@@ -359,3 +361,32 @@ def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
         Indexer().replace({"faq:1": [new_entry_1], "faq:2": [new_entry_2]})
 
     assert stored_content(source) == content_before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
+    None
+):
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    source = Source.objects.get()
+    # A connection of its own, outside the test's transaction: it sees only
+    # what is committed, and contends for row locks like another process.
+    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
+    table = other_connection.ops.quote_name(Source._meta.db_table)
+    # FOR SHARE, not FOR UPDATE: inserting documents already takes a FOR KEY
+    # SHARE lock on the source row (foreign-key check), which FOR SHARE does
+    # not conflict with, unlike FOR UPDATE / FOR NO KEY UPDATE.
+    probe = f"SELECT 1 FROM {table} WHERE id = %s FOR SHARE NOWAIT"
+    try:
+        with transaction.atomic():
+            Indexer().replace({"faq:1": [faq_entry(2)]})
+
+            with (
+                pytest.raises(OperationalError) as raised,
+                other_connection.cursor() as cursor,
+            ):
+                cursor.execute(probe, [source.pk])
+    finally:
+        other_connection.close()
+
+    assert isinstance(raised.value.__cause__, LockNotAvailable)
