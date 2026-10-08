@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import SampleDocument
@@ -81,3 +82,24 @@ def test_replace_stores_a_short_document_text_as_one_chunk_of_rank_0() -> None:
     assert list(Chunk.objects.values_list("document", "rank", "text")) == [
         (document.pk, 0, "Answer to question 1.")
     ]
+
+
+@pytest.mark.django_db
+def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> None:
+    paragraphs = [f"Paragraph {number}: " + "word " * 120 for number in range(5)]
+    long_document = SampleDocument(
+        text="\n\n".join(paragraphs),
+        source_key="guide:1",
+        title="Guide",
+        url="https://example.com/guide/",
+        language="en",
+        permissions=frozenset(),
+    )
+    expected = [(chunk.rank, chunk.text) for chunk in chunk_group([long_document])]
+
+    Indexer().replace({"guide:1": [long_document]})
+
+    document = Document.objects.get()
+    stored = Chunk.objects.filter(document=document).order_by("rank")
+    assert len(expected) > 1
+    assert list(stored.values_list("rank", "text")) == expected
