@@ -84,3 +84,7 @@ def test_fake_embeddings_of_the_same_text_are_equal_in_other_processes() -> None
 def test_fake_embeddings_with_zero_dimensions_raise_value_error() -> None:
     with pytest.raises(ValueError):
         FakeEmbeddings(dimensions=0)
+
+
+def test_fake_embeddings_model_is_fake_8() -> None:
+    assert FakeEmbeddings().model == "fake-8"
