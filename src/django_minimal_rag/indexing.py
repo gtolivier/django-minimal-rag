@@ -30,7 +30,7 @@ def _replace_source(
     source_key: str, documents: Sequence[DocumentProtocol], embeddings: Embeddings
 ) -> None:
     """Store ``documents`` as the only content of the source ``source_key``."""
-    source, _ = Source.objects.get_or_create(source_key=source_key)
+    source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
