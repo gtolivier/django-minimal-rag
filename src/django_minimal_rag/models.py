@@ -12,10 +12,6 @@ APP_LABEL_MAX_LENGTH = 100
 CODENAME_MAX_LENGTH = 100
 PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENGTH
 
-# RFC 5646 (section 4.4.1) recommends that implementations accept language tags
-# of at least 35 characters.
-LANGUAGE_TAG_MAX_LENGTH = 35
-
 
 class Source(models.Model):
     """A document source, identified by its key."""
@@ -32,7 +28,7 @@ class Document(models.Model):
     source = models.ForeignKey(Source, on_delete=models.CASCADE)
     title = models.TextField()
     url = models.TextField()
-    language = models.CharField(max_length=LANGUAGE_TAG_MAX_LENGTH, null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
+    language = models.TextField(null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
     permissions = ArrayField(
         models.CharField(max_length=PERMISSION_NAME_MAX_LENGTH), default=list
     )
