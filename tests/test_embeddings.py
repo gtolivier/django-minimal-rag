@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from django_minimal_rag.embeddings import FakeEmbeddings, get_embeddings
+from tests.embeddings import SampleEmbeddings
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -118,3 +119,13 @@ def test_get_embeddings_returns_the_backend_of_the_setting(
     }
 
     assert isinstance(get_embeddings(), FakeEmbeddings)
+
+
+def test_get_embeddings_returns_a_backend_defined_outside_the_package(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.SampleEmbeddings",
+    }
+
+    assert isinstance(get_embeddings(), SampleEmbeddings)
