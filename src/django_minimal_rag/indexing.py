@@ -18,24 +18,32 @@ class Indexer:
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
         embeddings = get_embeddings() if any(groups.values()) else None
+        plans = []
         for source_key, documents in sorted(groups.items()):
             if documents and embeddings:
-                _replace_source(source_key, documents, embeddings)
+                plans.append(_prepare_source(source_key, documents, embeddings))
             else:
                 _remove_source(source_key)
+        if embeddings:
+            _store_all_chunks(plans, embeddings)
 
 
-def _replace_source(
+_Plan = tuple[list[tuple[Document, str]], dict[str, Any]]
+
+
+def _prepare_source(
     source_key: str, documents: Sequence[DocumentProtocol], embeddings: Embeddings
-) -> None:
-    """Store ``documents`` as the only content of the source ``source_key``."""
+) -> _Plan:
+    """Store ``documents`` as the only documents of ``source_key``, without chunks.
+
+    Return the pieces to chunk and the vectors already stored for the source.
+    """
     documents = list(documents)  # a group may be iterable only once
     source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
-    pieces = _split_documents(documents, stored_documents)
-    _store_chunks(pieces, embeddings, stored_vectors)
+    return _split_documents(documents, stored_documents), stored_vectors
 
 
 def _remove_source(source_key: str) -> None:
@@ -84,45 +92,34 @@ def _split_documents(
     ]
 
 
-def _store_chunks(
-    pieces: Sequence[tuple[Document, str]],
-    embeddings: Embeddings,
-    stored_vectors: Mapping[str, Any],
-) -> None:
-    """Store the ``pieces`` of text with their embeddings, ranked in order.
-
-    Each piece is a stored document and a text of it.
-    """
-    vectors = _vectors([text for _, text in pieces], embeddings, stored_vectors)
-    Chunk.objects.bulk_create(
-        Chunk(
-            document=stored_document,
-            rank=rank,
-            text=text,
-            embedding_model=embeddings.model,
-            embedding=vector,
-        )
-        for rank, ((stored_document, text), vector) in enumerate(
-            zip(pieces, vectors, strict=True)
-        )
-    )
-
-
-def _vectors(
-    texts: Sequence[str],
-    embeddings: Embeddings,
-    stored_vectors: Mapping[str, Any],
-) -> list[Any]:
-    """Return one vector per text of ``texts``, embedding only those not yet stored.
+def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
+    """Store the chunks of all ``plans``, embedding their new texts in one call.
 
     A text already embedded by the same model keeps its vector.
     """
-    new_texts = [text for text in texts if text not in stored_vectors]
-    new_vectors = iter(_embed(new_texts, embeddings))
-    return [
-        stored_vectors[text] if text in stored_vectors else next(new_vectors)
-        for text in texts
+    new_texts = [
+        text
+        for pieces, stored_vectors in plans
+        for _, text in pieces
+        if text not in stored_vectors
     ]
+    new_vectors = iter(_embed(new_texts, embeddings))
+    chunks = []
+    for pieces, stored_vectors in plans:
+        for rank, (stored_document, text) in enumerate(pieces):
+            vector = (
+                stored_vectors[text] if text in stored_vectors else next(new_vectors)
+            )
+            chunks.append(
+                Chunk(
+                    document=stored_document,
+                    rank=rank,
+                    text=text,
+                    embedding_model=embeddings.model,
+                    embedding=vector,
+                )
+            )
+    Chunk.objects.bulk_create(chunks)
 
 
 def _embed(texts: Sequence[str], embeddings: Embeddings) -> list[Any]:
