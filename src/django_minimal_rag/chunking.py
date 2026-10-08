@@ -10,6 +10,7 @@ from django_minimal_rag.documents import Document
 PARAGRAPH_SEPARATOR = "\n\n"
 LINE_SEPARATOR = "\n"
 WINDOWS_LINE_SEPARATOR = "\r\n"
+OLD_MAC_LINE_SEPARATOR = "\r"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
 
@@ -27,7 +28,11 @@ def split_text(
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     _require_positive_max_length(max_length)
-    content = text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR).strip()
+    content = (
+        text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR)
+        .replace(OLD_MAC_LINE_SEPARATOR, LINE_SEPARATOR)
+        .strip()
+    )
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
