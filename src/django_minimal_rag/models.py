@@ -44,7 +44,7 @@ class Chunk(models.Model):
     rank = models.PositiveIntegerField()
     text = models.TextField()
     embedding_model = models.CharField(max_length=255)
-    embedding = VectorField(dimensions=3)
+    embedding = VectorField()
 
     def __str__(self) -> str:
         return self.text
