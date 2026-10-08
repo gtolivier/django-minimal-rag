@@ -16,7 +16,7 @@ class Document(models.Model):
     """A document stored for a source."""
 
     source = models.ForeignKey(Source, on_delete=models.CASCADE)
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=2000)
     url = models.URLField()
     language = models.CharField(max_length=16, null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
 
