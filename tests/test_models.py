@@ -204,6 +204,22 @@ def test_document_with_a_10000_character_url_reads_back_the_whole_url(
 
 
 @pytest.mark.django_db
+def test_str_of_a_document_with_an_80_character_title_is_its_title(
+    source: Source,
+) -> None:
+    title = ("Opening hours " * 6)[:80]
+    assert len(title) == 80
+    document = Document.objects.create(
+        source=source,
+        title=title,
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+
+    assert str(document) == title
+
+
+@pytest.mark.django_db
 def test_document_stored_with_permissions_reads_back_the_same_names(
     source: Source,
 ) -> None:
