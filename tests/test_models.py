@@ -103,3 +103,18 @@ def test_document_stored_with_permissions_reads_back_the_same_names() -> None:
     stored = Document.objects.get()
 
     assert set(stored.permissions) == {"app.view_note", "app.change_note"}
+
+
+@pytest.mark.django_db
+def test_document_stored_without_permissions_reads_back_no_permissions() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+
+    stored = Document.objects.get()
+
+    assert set(stored.permissions) == set()
