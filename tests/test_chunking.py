@@ -123,13 +123,14 @@ def test_two_other_line_boundaries_in_a_row_separate_two_paragraphs() -> None:
     assert split_text(text, max_length=max_length) == [first, second]
 
 
-def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
-    # Trailing spaces before each blank line, leading spaces or a tab after it.
+def test_first_line_of_each_paragraph_keeps_its_indentation() -> None:
+    # Trailing spaces and a tab before each blank line are stripped; leading
+    # spaces or a tab after it indent the next paragraph and are kept.
     text = "First paragraph.  \n\n  Second paragraph. \t\n\n\tThird paragraph."
     assert len(text) < MAX_LENGTH
 
     assert split_text(text, max_length=MAX_LENGTH) == [
-        "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+        "First paragraph.\n\n  Second paragraph.\n\n\tThird paragraph."
     ]
 
 
