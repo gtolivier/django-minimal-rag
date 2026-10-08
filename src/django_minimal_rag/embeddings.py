@@ -55,7 +55,15 @@ def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
     config = _embeddings_config()
     backend = _import_backend(_backend_path(config))
-    return backend(**config.get(OPTIONS_KEY, {}))
+    return backend(**_options(config))
+
+
+def _options(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    options: object = config.get(OPTIONS_KEY, {})
+    if not isinstance(options, Mapping):
+        msg = f"The {OPTIONS_KEY} of {EMBEDDINGS_SETTING} must be a mapping."
+        raise ImproperlyConfigured(msg)
+    return options
 
 
 def _embeddings_config() -> Mapping[str, Any]:
