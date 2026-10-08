@@ -440,6 +440,32 @@ def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
     assert stored_content(source) == content_before
 
 
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vectors(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
+        "OPTIONS": {"vector_count": 1},
+    }
+    two_chunk_document = SampleDocument(
+        text="\n\n".join(paragraphs_of_one_chunk_each(2)),
+        source_key="guide:1",
+        title="Guide",
+        url="https://example.com/guide/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    # Both counts, in any order and wording: 2 texts, 1 vector.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
+        Indexer().replace({"guide:1": [two_chunk_document]})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
 @pytest.mark.django_db(transaction=True)
 def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
     None

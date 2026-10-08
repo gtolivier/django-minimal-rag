@@ -56,3 +56,20 @@ class FailingEmbeddings:
             msg = f"Cannot embed {self.failing_text!r}."
             raise EmbeddingFailedError(msg)
         return [[float(len(text)), 1.0] for text in texts]
+
+
+class MiscountingEmbeddings:
+    """A backend returning ``vector_count`` vectors, however many texts it is given.
+
+    Set ``vector_count`` below or above the number of texts embedded to get
+    fewer or more vectors than asked.
+    """
+
+    model = "miscounting"
+
+    def __init__(self, vector_count: int) -> None:
+        self.vector_count = vector_count
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return ``vector_count`` vectors, ignoring ``texts``."""
+        return [[float(position), 1.0] for position in range(self.vector_count)]
