@@ -239,3 +239,26 @@ def test_replace_embeds_each_chunk_with_the_configured_backend(
     chunk = Chunk.objects.get()
     assert chunk.embedding_model == "fake-3"
     assert list(chunk.embedding) == expected_vector
+
+
+@pytest.mark.django_db
+def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
+    settings: "Settings",
+) -> None:
+    embedded: list[str] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.RecordingEmbeddings",
+        "OPTIONS": {"embedded": embedded},
+    }
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    vectors_before = {
+        chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
+    }
+    embedded_before = len(embedded)
+
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+
+    assert embedded[embedded_before:] == []
+    assert {
+        chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
+    } == vectors_before
