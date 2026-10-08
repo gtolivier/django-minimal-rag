@@ -12,8 +12,16 @@ APP_LABEL_MAX_LENGTH = 100
 CODENAME_MAX_LENGTH = 100
 PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENGTH
 SOURCE_KEY_MAX_LENGTH = 500
-TITLE_STR_MAX_LENGTH = 80
-TITLE_STR_ELLIPSIS = "…"
+STR_MAX_LENGTH = 80
+STR_ELLIPSIS = "…"
+
+
+def _shorten_for_str(text: str) -> str:
+    """Return ``text`` cut to fit ``__str__``, ending with an ellipsis if cut."""
+    if len(text) > STR_MAX_LENGTH:
+        kept_length = STR_MAX_LENGTH - len(STR_ELLIPSIS)
+        return text[:kept_length] + STR_ELLIPSIS
+    return text
 
 
 class Source(models.Model):
@@ -37,10 +45,7 @@ class Document(models.Model):
     )
 
     def __str__(self) -> str:
-        if len(self.title) > TITLE_STR_MAX_LENGTH:
-            kept_length = TITLE_STR_MAX_LENGTH - len(TITLE_STR_ELLIPSIS)
-            return self.title[:kept_length] + TITLE_STR_ELLIPSIS
-        return self.title
+        return _shorten_for_str(self.title)
 
 
 class Chunk(models.Model):
@@ -53,7 +58,4 @@ class Chunk(models.Model):
     embedding = VectorField()
 
     def __str__(self) -> str:
-        if len(self.text) > TITLE_STR_MAX_LENGTH:
-            kept_length = TITLE_STR_MAX_LENGTH - len(TITLE_STR_ELLIPSIS)
-            return self.text[:kept_length] + TITLE_STR_ELLIPSIS
-        return self.text
+        return _shorten_for_str(self.text)
