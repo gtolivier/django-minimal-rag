@@ -2,10 +2,16 @@ import json
 import os
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
 from django_minimal_rag.embeddings import FakeEmbeddings
+
+if TYPE_CHECKING:
+    # The Protocol is only an annotation here: satisfying it is checked by
+    # mypy, so the import is not needed when the tests run.
+    from django_minimal_rag.embeddings import Embeddings
 
 EMBED_A_TEXT_IN_A_CHILD_PROCESS = (
     "import json\n"
@@ -92,3 +98,11 @@ def test_fake_embeddings_model_is_fake_8() -> None:
 
 def test_fake_embeddings_with_three_dimensions_model_is_fake_3() -> None:
     assert FakeEmbeddings(dimensions=3).model == "fake-3"
+
+
+def test_fake_embeddings_are_accepted_where_embeddings_are_expected() -> None:
+    fake = FakeEmbeddings()
+
+    embeddings: Embeddings = fake
+
+    assert embeddings is fake
