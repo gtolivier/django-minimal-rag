@@ -654,3 +654,23 @@ def test_replace_locks_the_replaced_sources_in_sorted_source_key_order() -> None
         "faq:2",
         "faq:3",
     ]
+
+
+@pytest.mark.django_db
+def test_replace_with_an_empty_group_locks_its_source_before_deleting_anything() -> (
+    None
+):
+    # A replacement locks the source row, then deletes its documents; a removal
+    # must take the same lock first, or the two can deadlock.
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    with CaptureQueriesContext(connection) as captured:
+        Indexer().replace({"faq:1": []})
+
+    queries = captured.captured_queries
+    first_delete = next(
+        index
+        for index, query in enumerate(queries)
+        if query["sql"].startswith("DELETE")
+    )
+    assert source_keys_locked_by(queries[:first_delete]) == ["faq:1"]
