@@ -45,6 +45,13 @@ def _prepare_source(
     Return the pieces to chunk and the vectors already stored for the source.
     """
     documents = list(documents)  # a group may be iterable only once
+    for document in documents:
+        if document.source_key != source_key:
+            message = (
+                f"Document of source key {document.source_key!r} "
+                f"found in the group {source_key!r}"
+            )
+            raise ValueError(message)
     source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
