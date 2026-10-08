@@ -17,7 +17,7 @@ class Document(models.Model):
 
     source = models.ForeignKey(Source, on_delete=models.CASCADE)
     title = models.CharField(max_length=2000)
-    url = models.URLField()
+    url = models.URLField(max_length=2000)
     language = models.CharField(max_length=16, null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
 
     def __str__(self) -> str:
