@@ -27,7 +27,7 @@ def split_text(
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     _require_positive_max_length(max_length)
-    content = LEADING_BLANK_LINES.sub("", _normalize_line_endings(text)).rstrip()
+    content = _strip_blank_lines_around(_normalize_line_endings(text))
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
@@ -90,6 +90,14 @@ def _require_positive_max_length(max_length: int) -> None:
 def _normalize_line_endings(text: str) -> str:
     """Replace every line boundary of ``text`` with ``LINE_SEPARATOR``."""
     return LINE_SEPARATOR.join(text.splitlines())
+
+
+def _strip_blank_lines_around(text: str) -> str:
+    """Strip the blank lines around ``text``, and the whitespace ending it.
+
+    The indentation of its first line is kept.
+    """
+    return LEADING_BLANK_LINES.sub("", text).rstrip()
 
 
 def _strip_line_ends(paragraph: str) -> str:
