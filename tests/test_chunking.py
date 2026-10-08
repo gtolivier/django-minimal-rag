@@ -90,6 +90,13 @@ def test_lone_cr_line_endings_become_lf_between_and_within_paragraphs() -> None:
     ]
 
 
+def test_cr_followed_by_crlf_counts_as_two_line_endings_between_paragraphs() -> None:
+    # A lone "\r" then a "\r\n": two line endings, so a blank line.
+    text = "A.\r\r\nB."
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB."]
+
+
 def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
     # Trailing spaces before each blank line, leading spaces or a tab after it.
     text = "First paragraph.  \n\n  Second paragraph. \t\n\n\tThird paragraph."
