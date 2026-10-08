@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from django_minimal_rag.embeddings import FakeEmbeddings
+from django_minimal_rag.embeddings import FakeEmbeddings, get_embeddings
 
 if TYPE_CHECKING:
+    from pytest_django import Settings
+
     # The Protocol is only an annotation here: satisfying it is checked by
     # mypy, so the import is not needed when the tests run.
     from django_minimal_rag.embeddings import Embeddings
@@ -106,3 +108,13 @@ def test_fake_embeddings_are_accepted_where_embeddings_are_expected() -> None:
     embeddings: Embeddings = fake
 
     assert embeddings is fake
+
+
+def test_get_embeddings_returns_the_backend_of_the_setting(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+    }
+
+    assert isinstance(get_embeddings(), FakeEmbeddings)
