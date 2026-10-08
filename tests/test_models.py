@@ -165,3 +165,36 @@ def test_chunk_stored_for_a_document_reads_back_its_fields_from_the_database() -
     assert stored.text == "The shop opens at 9 am."
     assert stored.embedding_model == "text-embedding-3-small"
     assert list(stored.embedding) == [0.5, -1.0, 0.25]
+
+
+@pytest.mark.django_db
+def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side() -> (
+    None
+):
+    source = Source.objects.create(source_key="faq:opening-hours")
+    document = Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+    Chunk.objects.create(
+        document=document,
+        rank=0,
+        text="The shop opens at 9 am.",
+        embedding_model="small-model",
+        embedding=[0.5, -1.0, 0.25],
+    )
+    Chunk.objects.create(
+        document=document,
+        rank=0,
+        text="The shop opens at 9 am.",
+        embedding_model="large-model",
+        embedding=[0.5, -1.0, 0.25, 2.0, -0.125],
+    )
+
+    small = Chunk.objects.get(embedding_model="small-model")
+    large = Chunk.objects.get(embedding_model="large-model")
+
+    assert list(small.embedding) == [0.5, -1.0, 0.25]
+    assert list(large.embedding) == [0.5, -1.0, 0.25, 2.0, -0.125]
