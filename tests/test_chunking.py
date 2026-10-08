@@ -133,17 +133,6 @@ def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
     ]
 
 
-def test_spaces_and_tabs_around_each_line_of_a_paragraph_are_stripped() -> None:
-    # Trailing spaces or a tab before each line break, leading spaces or a tab
-    # after it, inside a single paragraph.
-    text = "First line.  \n  Second line. \t\n\tThird line."
-    assert len(text) < MAX_LENGTH
-
-    assert split_text(text, max_length=MAX_LENGTH) == [
-        "First line.\nSecond line.\nThird line."
-    ]
-
-
 def test_unicode_whitespace_at_the_end_of_each_line_is_stripped() -> None:
     # A NO-BREAK SPACE, an IDEOGRAPHIC SPACE and an EM SPACE before each line
     # break, inside a single paragraph: whitespace, but neither a space nor a tab.
@@ -151,6 +140,15 @@ def test_unicode_whitespace_at_the_end_of_each_line_is_stripped() -> None:
     assert len(text) < MAX_LENGTH
 
     assert split_text(text, max_length=MAX_LENGTH) == ["a\nb\nc\nd"]
+
+
+def test_lines_after_the_first_of_a_paragraph_keep_their_indentation() -> None:
+    # Only whitespace at the end of each line is stripped: the indentation of
+    # the second line, inside a single paragraph, is part of its content.
+    text = "def f():\n    return 1"
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [text]
 
 
 def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
