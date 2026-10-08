@@ -46,13 +46,17 @@ chunks = chunk_group(documents, max_length=500, length=count_tokens)
 Text is split on blank lines first, then between lines, then between
 words; a word longer than `max_length` is cut. Paragraphs, lines and words
 that fit are packed together, joined by a blank line, a newline and a space
-respectively. `\r\n` line endings become `\n`, and the whitespace around
-each paragraph is stripped. Chunks do not overlap.
+respectively. Every line boundary `str.splitlines` recognizes — `\r\n`,
+a lone `\r`, `\u2028`… — becomes `\n`. The blank lines around the text and
+the whitespace at the end of each line are stripped, but each line keeps
+its indentation, so Markdown lists and code keep their structure; only a
+line split between words loses it. Chunks do not overlap.
 
-`max_length` must be at least 1, and every character must fit in it on its
-own: otherwise `ValueError` is raised rather than a chunk exceeding the
-limit. `length` is expected to grow with the text, as `len` and token
-counts do.
+`max_length` must be at least 1, and every character of a word that has to
+be cut must fit in it on its own: otherwise `ValueError` is raised rather
+than a chunk exceeding the limit. Whitespace never reaches a chunk unless it
+fits, so it never raises. `length` is expected to grow with the text, as
+`len` and token counts do.
 
 ## Requirements
 

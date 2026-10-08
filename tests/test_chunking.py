@@ -22,10 +22,12 @@ def test_text_shorter_than_max_length_gives_one_chunk_the_text_itself() -> None:
     assert split_text(text, max_length=MAX_LENGTH) == [text]
 
 
-def test_whitespace_around_the_text_is_stripped_from_its_chunk() -> None:
+def test_first_line_of_the_text_keeps_its_indentation_after_blank_lines() -> None:
+    # A blank line holding a space comes before the text, and spaces and a tab
+    # after it: both are dropped, but the tab indenting its first line is kept.
     text = " \n\tA short document.\n  \t"
 
-    assert split_text(text, max_length=MAX_LENGTH) == ["A short document."]
+    assert split_text(text, max_length=MAX_LENGTH) == ["\tA short document."]
 
 
 def test_two_paragraphs_exceeding_max_length_give_one_chunk_per_paragraph() -> None:
@@ -80,14 +82,76 @@ def test_crlf_line_endings_become_lf_between_and_within_paragraphs() -> None:
     ]
 
 
-def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
-    # Trailing spaces before each blank line, leading spaces or a tab after it.
+def test_lone_cr_line_endings_become_lf_between_and_within_paragraphs() -> None:
+    # A line break inside the first paragraph, a blank line between the two.
+    text = "First line,\rsecond line.\r\rNext paragraph."
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [
+        "First line,\nsecond line.\n\nNext paragraph."
+    ]
+
+
+def test_every_other_line_boundary_python_recognizes_becomes_lf() -> None:
+    # NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR, vertical tab, form feed and
+    # the file, group and record separators: the other boundaries of
+    # str.splitlines.
+    text = (
+        "a\N{NEXT LINE}b\N{LINE SEPARATOR}c\N{PARAGRAPH SEPARATOR}d"
+        "\ve\ff\x1cg\x1dh\x1ei"
+    )
+    assert text.splitlines() == list("abcdefghi")
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["a\nb\nc\nd\ne\nf\ng\nh\ni"]
+
+
+def test_cr_followed_by_crlf_counts_as_two_line_endings_between_paragraphs() -> None:
+    # A lone "\r" then a "\r\n": two line endings, so a blank line.
+    text = "A.\r\r\nB."
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB."]
+
+
+def test_two_other_line_boundaries_in_a_row_separate_two_paragraphs() -> None:
+    # Two PARAGRAPH SEPARATOR characters: two line endings, so a blank line.
+    first = "A."
+    second = "B."
+    text = f"{first}\N{PARAGRAPH SEPARATOR}\N{PARAGRAPH SEPARATOR}{second}"
+    max_length = 3
+    assert len(first) <= max_length
+    assert len(second) <= max_length
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == [first, second]
+
+
+def test_first_line_of_each_paragraph_keeps_its_indentation() -> None:
+    # Trailing spaces and a tab before each blank line are stripped; leading
+    # spaces or a tab after it indent the next paragraph and are kept.
     text = "First paragraph.  \n\n  Second paragraph. \t\n\n\tThird paragraph."
     assert len(text) < MAX_LENGTH
 
     assert split_text(text, max_length=MAX_LENGTH) == [
-        "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+        "First paragraph.\n\n  Second paragraph.\n\n\tThird paragraph."
     ]
+
+
+def test_unicode_whitespace_at_the_end_of_each_line_is_stripped() -> None:
+    # A NO-BREAK SPACE, an IDEOGRAPHIC SPACE and an EM SPACE before each line
+    # break, inside a single paragraph: whitespace, but neither a space nor a tab.
+    text = "a\N{NO-BREAK SPACE}\nb\N{IDEOGRAPHIC SPACE}\nc\N{EM SPACE}\nd"
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["a\nb\nc\nd"]
+
+
+def test_lines_after_the_first_of_a_paragraph_keep_their_indentation() -> None:
+    # Only whitespace at the end of each line is stripped: the indentation of
+    # the second line, inside a single paragraph, is part of its content.
+    text = "def f():\n    return 1"
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [text]
 
 
 def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
@@ -157,6 +221,16 @@ def test_pieces_of_a_split_line_are_not_merged_with_its_neighbour_lines() -> Non
         "epsilon",
         after,
     ]
+
+
+def test_trailing_spaces_go_and_a_line_split_between_words_loses_its_indent() -> None:
+    # Trailing spaces end the first line. The indented second line does not fit
+    # max_length: it is split between words, so its indentation is not kept.
+    text = "a   \n   b c d e"
+    max_length = 6
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == ["a", "b c d", "e"]
 
 
 def test_word_longer_than_max_length_is_cut_into_pieces_of_max_length() -> None:
@@ -234,6 +308,21 @@ def test_character_measuring_more_than_max_length_raises_value_error() -> None:
         split_text("abc", max_length=max_length, length=count_one_more_than_characters)
 
 
+def count_tab_as_ten(text: str) -> int:
+    tab_size = 10
+    return len(text) + (tab_size - 1) * text.count("\t")
+
+
+def test_whitespace_character_measuring_more_than_max_length_does_not_raise() -> None:
+    text = "ab\tcd"
+    max_length = 5
+    # The tab alone measures more than max_length, but it separates words and
+    # never reaches a chunk: the words are joined by a space instead.
+    assert count_tab_as_ten("\t") > max_length
+
+    assert split_text(text, max_length=max_length, length=count_tab_as_ten) == ["ab cd"]
+
+
 def test_cutting_a_long_word_calls_length_a_bounded_number_of_times() -> None:
     word = "a" * 10_000
     max_length = 100
@@ -251,6 +340,23 @@ def test_cutting_a_long_word_calls_length_a_bounded_number_of_times() -> None:
 
     assert chunks == ["a" * max_length] * (len(word) // max_length)
     assert calls <= max_calls
+
+
+def test_one_paragraph_that_fits_calls_length_exactly_once() -> None:
+    text = "A short document."
+    assert len(text) < MAX_LENGTH
+    measured: list[str] = []
+
+    def recording_len(measured_text: str) -> int:
+        measured.append(measured_text)
+        return len(measured_text)
+
+    # The paragraph fits as a whole: measuring it once is enough, and no
+    # character of it needs measuring on its own.
+    chunks = split_text(text, max_length=MAX_LENGTH, length=recording_len)
+
+    assert chunks == [text]
+    assert measured == [text]
 
 
 def note(number: int, *, title: str, text: str) -> SampleDocument:

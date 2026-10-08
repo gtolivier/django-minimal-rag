@@ -9,9 +9,9 @@ from django_minimal_rag.documents import Document
 
 PARAGRAPH_SEPARATOR = "\n\n"
 LINE_SEPARATOR = "\n"
-WINDOWS_LINE_SEPARATOR = "\r\n"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
+LEADING_BLANK_LINES = re.compile(r"\A\s*\n")
 
 DEFAULT_MAX_LENGTH = 1000
 
@@ -27,13 +27,12 @@ def split_text(
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     _require_positive_max_length(max_length)
-    content = text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR).strip()
+    content = _strip_blank_lines_around(_normalize_line_endings(text))
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
-    _require_every_character_fits(content, limit=limit)
     return _pack_splitting_oversized(
-        [paragraph.strip() for paragraph in BLANK_LINES.split(content)],
+        [_strip_line_ends(paragraph) for paragraph in BLANK_LINES.split(content)],
         separator=PARAGRAPH_SEPARATOR,
         limit=limit,
         split=partial(_split_between_lines, limit=limit),
@@ -88,15 +87,24 @@ def _require_positive_max_length(max_length: int) -> None:
         raise ValueError(msg)
 
 
-def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
-    """Raise ``ValueError`` if a character of ``text`` alone does not fit ``limit``."""
-    for character in dict.fromkeys(text):
-        if not limit.fits(character):
-            msg = (
-                f"character {character!r} measures {limit.length(character)}, "
-                f"more than max_length ({limit.max_length})"
-            )
-            raise ValueError(msg)
+def _normalize_line_endings(text: str) -> str:
+    """Replace every line boundary of ``text`` with ``LINE_SEPARATOR``."""
+    return LINE_SEPARATOR.join(text.splitlines())
+
+
+def _strip_blank_lines_around(text: str) -> str:
+    """Strip the blank lines around ``text``, and the whitespace ending it.
+
+    The indentation of its first line is kept.
+    """
+    return LEADING_BLANK_LINES.sub("", text).rstrip()
+
+
+def _strip_line_ends(paragraph: str) -> str:
+    """Strip the whitespace at the end of each line of ``paragraph``."""
+    return LINE_SEPARATOR.join(
+        line.rstrip() for line in paragraph.split(LINE_SEPARATOR)
+    )
 
 
 def _pack_splitting_oversized(
@@ -160,9 +168,8 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
 def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     """The longest prefix of ``text`` that fits ``limit``.
 
-    The first character of ``text`` must fit ``limit``, as ``split_text``
-    checks every character does: the prefix is never empty, so cutting a word
-    always moves forward.
+    The prefix is never empty, so cutting a word always moves forward: a first
+    character of ``text`` that does not fit ``limit`` raises ``ValueError``.
 
     The search is bracketed first, so every measured prefix stays within twice
     the size of the result, however long ``text`` is.
@@ -182,12 +189,24 @@ def _bracket_longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> tuple[in
 
     The prefix of the first size fits; that of the second, larger one does
     not, or would go past the end of ``text``. They are found by doubling the
-    size from 1, the first character being known to fit.
+    size from 1, once ``_require_first_character_fits`` has checked it.
     """
+    _require_first_character_fits(text, limit=limit)
     fitting = 1
     while fitting * 2 <= len(text) and limit.fits(text[: fitting * 2]):
         fitting *= 2
     return fitting, min(fitting * 2, len(text) + 1)
+
+
+def _require_first_character_fits(text: str, *, limit: _SizeLimit) -> None:
+    """Raise ``ValueError`` if the first character of ``text`` exceeds ``limit``."""
+    character = text[:1]
+    if not limit.fits(character):
+        msg = (
+            f"character {character!r} measures {limit.length(character)}, "
+            f"more than max_length ({limit.max_length})"
+        )
+        raise ValueError(msg)
 
 
 def _pack(pieces: list[str], *, separator: str, limit: _SizeLimit) -> list[str]:
