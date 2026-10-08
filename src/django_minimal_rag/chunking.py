@@ -11,6 +11,7 @@ PARAGRAPH_SEPARATOR = "\n\n"
 LINE_SEPARATOR = "\n"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
+LEADING_BLANK_LINES = re.compile(r"\A\s*\n")
 
 DEFAULT_MAX_LENGTH = 1000
 
@@ -26,7 +27,7 @@ def split_text(
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     _require_positive_max_length(max_length)
-    content = _normalize_line_endings(text).strip()
+    content = LEADING_BLANK_LINES.sub("", _normalize_line_endings(text)).rstrip()
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
