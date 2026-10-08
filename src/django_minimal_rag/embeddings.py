@@ -1,7 +1,7 @@
 """Embedding backends."""
 
 import zlib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
 from django.conf import settings
@@ -64,6 +64,9 @@ def _embeddings_config() -> dict[str, Any]:
     except AttributeError as error:
         msg = f"The {EMBEDDINGS_SETTING} setting is not set."
         raise ImproperlyConfigured(msg) from error
+    if not isinstance(config, Mapping):
+        msg = f"The {EMBEDDINGS_SETTING} setting must be a mapping."
+        raise ImproperlyConfigured(msg)
     return config
 
 
