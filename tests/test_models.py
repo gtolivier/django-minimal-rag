@@ -69,3 +69,21 @@ def test_document_with_a_2000_character_title_reads_back_the_whole_title() -> No
     stored = Document.objects.get()
 
     assert stored.title == long_title
+
+
+@pytest.mark.django_db
+def test_document_with_a_2000_character_url_reads_back_the_whole_url() -> None:
+    base_url = "https://example.com/faq/opening-hours?q="
+    long_url = base_url + "a" * (2000 - len(base_url))
+    assert len(long_url) == 2000
+    source = Source.objects.create(source_key="faq:opening-hours")
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url=long_url,
+        language="en",
+    )
+
+    stored = Document.objects.get()
+
+    assert stored.url == long_url
