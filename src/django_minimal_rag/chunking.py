@@ -9,8 +9,6 @@ from django_minimal_rag.documents import Document
 
 PARAGRAPH_SEPARATOR = "\n\n"
 LINE_SEPARATOR = "\n"
-WINDOWS_LINE_SEPARATOR = "\r\n"
-OLD_MAC_LINE_SEPARATOR = "\r"
 WORD_SEPARATOR = " "
 BLANK_LINES = re.compile(r"\n\s*\n")
 
@@ -89,10 +87,8 @@ def _require_positive_max_length(max_length: int) -> None:
 
 
 def _normalize_line_endings(text: str) -> str:
-    """Replace Windows and old Mac line endings in ``text`` with ``LINE_SEPARATOR``."""
-    return text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR).replace(
-        OLD_MAC_LINE_SEPARATOR, LINE_SEPARATOR
-    )
+    """Replace every line boundary of ``text`` with ``LINE_SEPARATOR``."""
+    return LINE_SEPARATOR.join(text.splitlines())
 
 
 def _strip_lines(paragraph: str) -> str:
