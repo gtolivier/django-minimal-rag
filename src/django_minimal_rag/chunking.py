@@ -32,7 +32,6 @@ def split_text(
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
-    _require_every_character_fits(content, limit=limit)
     return _pack_splitting_oversized(
         [_strip_lines(paragraph) for paragraph in BLANK_LINES.split(content)],
         separator=PARAGRAPH_SEPARATOR,
@@ -166,6 +165,7 @@ def _cut_word(word: str, *, limit: _SizeLimit) -> list[str]:
     """Cut ``word`` into its longest prefixes that fit ``limit``, unless it fits."""
     if limit.fits(word):
         return [word]
+    _require_every_character_fits(word, limit=limit)
     pieces: list[str] = []
     rest = word
     while rest:
