@@ -114,10 +114,19 @@ implements.
   shifts on every insertion. Since every call replaces whole groups, a
   replayed call gives the same result, and comparing texts lets the package
   re-embed only what changed.
-- **Each `replace()` is applied in a transaction.** The atomicity of a batch
-  belongs to this package, and so do transient errors such as a
-  rate-limited embedding API, retried with backoff: the producer cannot
-  tell which exceptions are transient.
+- **Each `replace()` is applied in one transaction.** The atomicity of a
+  batch belongs to this package: one transaction covers all the groups of
+  a call, embedding included, so a backend failure stores nothing of the
+  call. Transient errors such as a rate-limited embedding API belong to it
+  too, to be retried with backoff: the producer cannot tell which
+  exceptions are transient (not implemented yet, see "Retries" below).
+- **Concurrent `replace()` calls are serialized by a row lock, not a
+  constraint.** `replace()` locks the row of each source it replaces
+  (`select_for_update`) until its transaction ends, so two calls for the
+  same source, from two quick saves, run one after the other. No
+  uniqueness constraint covers chunks: a concurrent call would duplicate
+  whole documents, which a constraint on chunks would not catch, and
+  identical paragraphs may legitimately repeat within a group.
 - **Answers come from the retrieved chunks only.** Chunks too far from the
   question — past a relevance threshold — are discarded before the LLM is
   called; with none left, there
@@ -197,11 +206,14 @@ Each one is settled before the feature that needs its answer.
   whether the threshold is a setting, a per-query argument, or both.
 - **The LLM:** how a project chooses it, the prompt, the shape of a
   citation, and whether answers are streamed.
-- **Transactions and concurrency:** whether the embedding calls, and their
-  retries, run inside `replace()`'s transaction — holding locks for as long
-  as the API is rate-limited — or before it; and how two `replace()` calls
-  for the same source, from two quick saves, are kept from interleaving
-  their chunks (locking the source row, for instance).
+- **Retries:** embedding runs inside `replace()`'s transaction, so
+  retrying a rate-limited API there holds the source locks for as long as
+  it waits. Whether retries stay inside, or embedding moves before the
+  transaction (re-checking what changed once the locks are taken).
+- **Lock ordering:** `replace()` locks sources in the order of its
+  `groups` mapping, so two calls sharing several sources in different
+  orders can deadlock (PostgreSQL then aborts one). Whether to lock them
+  in sorted `source_key` order.
 - **Orphaned chunks:** `replace()` and `prune()` remove what their producer
   reports, but the chunks of a source no producer reports any more — a
   model no longer registered, a producer that never prunes — stay
@@ -224,18 +236,15 @@ Provisional: the design pass may reorder, split or merge them.
   permissions, their vector field and its migration.
 - [x] **4. Embeddings.** The embedding backend, chosen by a setting, with a
   fake backend for tests.
-- [ ] **5. `replace()`.** Groups replaced in a transaction; empty groups
-  removed; unchanged texts not re-embedded. Two points left open by
-  feature 3's review:
-  - a protocol document's `permissions` is an `AbstractSet[str]`, which
-    psycopg cannot store in the `ArrayField` as it is (a `frozenset` raises
-    `ProgrammingError`): `replace()` converts it, and a test passes a
-    `frozenset`;
-  - nothing in the database keeps a document's chunks from being stored
-    twice, by a retried or repeated write. Decide whether a constraint
-    enforces it, and on what — chunks are identified by their text within
-    their group, not by their rank — or whether the transaction that
-    replaces whole groups is enough.
+- [x] **5. `replace()`.** Groups replaced in a transaction; empty groups
+  removed; unchanged texts not re-embedded. The two points left open by
+  feature 3's review are settled:
+  - a protocol document's `permissions`, an `AbstractSet[str]` psycopg
+    cannot store as it is, is stored as its sorted list (a test passes a
+    `frozenset`);
+  - no constraint keeps chunks from being stored twice: each call replaces
+    whole groups in one transaction, and the source row lock keeps two
+    calls from interleaving (see "Decisions").
 - [ ] **6. `prune()`.** Sources of a model that are not kept are removed.
 - [ ] **7. Retrieval.** The nearest chunks to a question that the user
   may read, within the relevance threshold. Permission filtering is part of

@@ -18,8 +18,8 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Only the document Protocol, chunking, the storage models and
-the embedding backend setting exist so far: see
+Pre-alpha. Only the document Protocol, chunking, the storage models, the
+embedding backend setting and indexing exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -117,7 +117,7 @@ a `typing.Protocol`:
 
 Changing models does not mix vectors: a chunk embedded by another model
 than the current backend's is re-embedded by `replace()`, and retrieval
-only reads chunks of the current model (both features to come).
+only reads chunks of the current model (a feature to come).
 
 `django_minimal_rag.embeddings.FakeEmbeddings` is a backend for tests: no
 network, no model, deterministic across runs and processes. Its
@@ -135,6 +135,34 @@ MINIMAL_RAG_EMBEDDINGS = {
     "OPTIONS": {"dimensions": 3},
 }
 ```
+
+## Indexing
+
+`django_minimal_rag.indexing.Indexer().replace(groups)` stores documents
+with their chunks and embeddings. `groups` maps each `source_key` to the
+complete sequence of that source's documents:
+
+```python
+Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
+```
+
+- Each group replaces everything stored under its `source_key`: its
+  documents are chunked with `chunk_group` (default options), embedded
+  with the backend `MINIMAL_RAG_EMBEDDINGS` configures, and stored;
+  sources absent from the call are left as they are.
+- An empty group removes its source, with its documents and chunks; for a
+  key that is not stored, it does nothing.
+- A chunk whose text is already stored in its source, embedded by the
+  current backend's model, keeps its vector: only new or changed texts,
+  and texts embedded by another model, are sent to the backend.
+- A call is one transaction, embedding included: if the backend raises,
+  the exception propagates and nothing of the call is stored. The row of
+  each replaced source is locked (`SELECT … FOR UPDATE`) until the
+  transaction ends, so two calls replacing the same source run one after
+  the other instead of interleaving their documents.
+
+`replace()` is the first half of django-model-rag's output Protocol;
+`prune()`, the other half, is a feature to come.
 
 ## Requirements
 
