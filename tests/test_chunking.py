@@ -310,9 +310,9 @@ def test_one_paragraph_that_fits_calls_length_exactly_once() -> None:
     assert len(text) < MAX_LENGTH
     measured: list[str] = []
 
-    def recording_len(text: str) -> int:
-        measured.append(text)
-        return len(text)
+    def recording_len(measured_text: str) -> int:
+        measured.append(measured_text)
+        return len(measured_text)
 
     # The paragraph fits as a whole: measuring it once is enough, and no
     # character of it needs measuring on its own.
