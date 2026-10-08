@@ -1,3 +1,4 @@
+import dataclasses
 from typing import TYPE_CHECKING
 
 import pytest
@@ -262,3 +263,34 @@ def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
     assert {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     } == vectors_before
+
+
+@pytest.mark.django_db
+def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
+    settings: "Settings",
+) -> None:
+    embedded: list[str] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.RecordingEmbeddings",
+        "OPTIONS": {"embedded": embedded},
+    }
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2), faq_entry(3)]})
+    vectors_before = {
+        chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
+    }
+    embedded_before = len(embedded)
+    changed_entry = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
+
+    Indexer().replace({"faq:1": [faq_entry(1), changed_entry, faq_entry(3)]})
+
+    assert embedded[embedded_before:] == ["New answer to question 2."]
+    vectors_after = {chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()}
+    unchanged = ["Answer to question 1.", "Answer to question 3."]
+    assert [vectors_after[text] for text in unchanged] == [
+        vectors_before[text] for text in unchanged
+    ]
+    assert sorted(vectors_after) == [
+        "Answer to question 1.",
+        "Answer to question 3.",
+        "New answer to question 2.",
+    ]
