@@ -28,11 +28,7 @@ def split_text(
     ``max_length`` defaults to ``DEFAULT_MAX_LENGTH``.
     """
     _require_positive_max_length(max_length)
-    content = (
-        text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR)
-        .replace(OLD_MAC_LINE_SEPARATOR, LINE_SEPARATOR)
-        .strip()
-    )
+    content = _normalize_line_endings(text).strip()
     if not content:
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
@@ -91,6 +87,13 @@ def _require_positive_max_length(max_length: int) -> None:
     if max_length < 1:
         msg = f"max_length must be at least 1, got {max_length}"
         raise ValueError(msg)
+
+
+def _normalize_line_endings(text: str) -> str:
+    """Replace Windows and old Mac line endings in ``text`` with ``LINE_SEPARATOR``."""
+    return text.replace(WINDOWS_LINE_SEPARATOR, LINE_SEPARATOR).replace(
+        OLD_MAC_LINE_SEPARATOR, LINE_SEPARATOR
+    )
 
 
 def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
