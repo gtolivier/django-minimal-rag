@@ -1,8 +1,21 @@
+from typing import TYPE_CHECKING
+
 import pytest
 
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import SampleDocument
+
+if TYPE_CHECKING:
+    from pytest_django import Settings
+
+
+@pytest.fixture(autouse=True)
+def fake_embeddings(settings: "Settings") -> None:
+    """Configure the embedding backend meant for tests."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+    }
 
 
 def faq_entry(number: int) -> SampleDocument:
@@ -57,4 +70,14 @@ def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> Non
 
     assert list(Document.objects.values_list("permissions", flat=True)) == [
         ["app.change_note", "faq.view_faq"]
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_stores_a_short_document_text_as_one_chunk_of_rank_0() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    document = Document.objects.get()
+    assert list(Chunk.objects.values_list("document", "rank", "text")) == [
+        (document.pk, 0, "Answer to question 1.")
     ]
