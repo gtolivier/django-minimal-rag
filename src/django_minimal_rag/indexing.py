@@ -18,7 +18,7 @@ class Indexer:
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
         embeddings = get_embeddings() if any(groups.values()) else None
-        for source_key, documents in groups.items():
+        for source_key, documents in sorted(groups.items()):
             if documents and embeddings:
                 _replace_source(source_key, documents, embeddings)
             else:
