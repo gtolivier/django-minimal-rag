@@ -129,3 +129,16 @@ def test_get_embeddings_returns_a_backend_defined_outside_the_package(
     }
 
     assert isinstance(get_embeddings(), SampleEmbeddings)
+
+
+def test_get_embeddings_builds_the_backend_with_the_options_of_the_setting(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "OPTIONS": {"dimensions": 3},
+    }
+
+    [vector] = get_embeddings().embed(["a text"])
+
+    assert len(vector) == 3
