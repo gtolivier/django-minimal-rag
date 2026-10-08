@@ -12,6 +12,7 @@ APP_LABEL_MAX_LENGTH = 100
 CODENAME_MAX_LENGTH = 100
 PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENGTH
 SOURCE_KEY_MAX_LENGTH = 500
+EMBEDDING_MODEL_MAX_LENGTH = 255
 STR_MAX_LENGTH = 80
 STR_ELLIPSIS = "…"
 
@@ -54,7 +55,7 @@ class Chunk(models.Model):
     document = models.ForeignKey(Document, on_delete=models.CASCADE)
     rank = models.PositiveIntegerField()
     text = models.TextField()
-    embedding_model = models.CharField(max_length=255)
+    embedding_model = models.CharField(max_length=EMBEDDING_MODEL_MAX_LENGTH)
     embedding = VectorField()
 
     def __str__(self) -> str:
