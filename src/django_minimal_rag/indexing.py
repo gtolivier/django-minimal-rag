@@ -59,8 +59,8 @@ def _store_documents(
 
     They are keyed by identity because a document may be unhashable.
     """
-    return {
-        id(document): Document.objects.create(
+    stored_documents = Document.objects.bulk_create(
+        Document(
             source=source,
             title=document.title,
             url=document.url,
@@ -68,6 +68,10 @@ def _store_documents(
             permissions=sorted(document.permissions),
         )
         for document in documents
+    )
+    return {
+        id(document): stored_document
+        for document, stored_document in zip(documents, stored_documents, strict=True)
     }
 
 
@@ -79,14 +83,16 @@ def _store_chunks(
 ) -> None:
     """Store ``chunks`` with their embeddings, each under its stored document."""
     vectors = _vectors(chunks, embeddings, stored_vectors)
-    for chunk, vector in zip(chunks, vectors, strict=True):
-        Chunk.objects.create(
+    Chunk.objects.bulk_create(
+        Chunk(
             document=stored_documents[id(chunk.document)],
             rank=chunk.rank,
             text=chunk.text,
             embedding_model=embeddings.model,
             embedding=vector,
         )
+        for chunk, vector in zip(chunks, vectors, strict=True)
+    )
 
 
 def _vectors(
