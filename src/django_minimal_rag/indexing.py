@@ -16,6 +16,9 @@ class Indexer:
         """Replace the indexed content with the given groups."""
         embeddings = get_embeddings()
         for source_key, documents in groups.items():
+            if not documents:
+                Source.objects.filter(source_key=source_key).delete()
+                continue
             source, _ = Source.objects.get_or_create(source_key=source_key)
             source.document_set.all().delete()
             stored_documents = _store_documents(source, documents)
