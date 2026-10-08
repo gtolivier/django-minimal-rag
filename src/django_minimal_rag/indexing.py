@@ -17,18 +17,17 @@ class Indexer:
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
-        if not any(groups.values()):
-            for source_key in sorted(groups):
-                _remove_source(source_key)
-            return
-        embeddings = get_embeddings()
+        embeddings: Embeddings | None = None  # built only if a group has documents
         plans = []
-        for source_key, documents in sorted(groups.items()):
-            if documents:
-                plans.append(_prepare_source(source_key, documents, embeddings))
-            else:
+        for source_key, documents in _checked_groups(groups).items():
+            if not documents:
                 _remove_source(source_key)
-        _store_all_chunks(plans, embeddings)
+                continue
+            if embeddings is None:
+                embeddings = get_embeddings()
+            plans.append(_prepare_source(source_key, documents, embeddings))
+        if embeddings is not None:
+            _store_all_chunks(plans, embeddings)
 
 
 class _Plan(NamedTuple):
@@ -47,13 +46,27 @@ def _prepare_source(
 
     Return the pieces to chunk and the vectors already stored for the source.
     """
-    documents = list(documents)  # a group may be iterable only once
-    _check_source_keys(source_key, documents)
     source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
     return _Plan(_split_documents(documents, stored_documents), stored_vectors)
+
+
+def _checked_groups(
+    groups: Mapping[str, Sequence[DocumentProtocol]],
+) -> dict[str, list[DocumentProtocol]]:
+    """Return ``groups`` sorted by source key, each as a list of its documents.
+
+    Raise ``ValueError`` if a document is not of its group's source key.
+    """
+    sorted_groups = {
+        source_key: list(documents)  # a group may be iterable only once
+        for source_key, documents in sorted(groups.items())
+    }
+    for source_key, documents in sorted_groups.items():
+        _check_source_keys(source_key, documents)
+    return sorted_groups
 
 
 def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -> None:
