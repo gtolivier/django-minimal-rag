@@ -12,6 +12,7 @@ APP_LABEL_MAX_LENGTH = 100
 CODENAME_MAX_LENGTH = 100
 PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENGTH
 SOURCE_KEY_MAX_LENGTH = 500
+TITLE_STR_MAX_LENGTH = 80
 
 
 class Source(models.Model):
@@ -35,6 +36,8 @@ class Document(models.Model):
     )
 
     def __str__(self) -> str:
+        if len(self.title) > TITLE_STR_MAX_LENGTH:
+            return self.title[: TITLE_STR_MAX_LENGTH - 1] + "…"
         return self.title
 
 
