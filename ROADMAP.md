@@ -130,10 +130,13 @@ implements.
   separate package.
 - **Chunking by characters, paragraphs first.** A document's text is split
   on blank lines; paragraphs that fit are packed together, a paragraph too
-  long is split between words, and a word too long is cut. `max_length`
-  (1000 by default) bounds each chunk as measured by a `length` function,
-  `len` by default: a project counting tokens passes its tokenizer's
-  count, without the package depending on any tokenizer. No overlap
+  long is split between lines, a line too long between words, and a word
+  too long is cut. `max_length` (1000 by default) bounds each chunk as
+  measured by a `length` function, `len` by default: a project counting
+  tokens passes its tokenizer's count, without the package depending on any
+  tokenizer. A limit no chunk can meet — below 1, or smaller than a single
+  character — raises `ValueError` rather than producing an oversized chunk.
+  No overlap
   between chunks, and the title is not repeated in them: it is stored with
   its document. A group's chunks are ranked from 0, across its documents in
   their order; a document with no text gives no chunk and takes no rank.

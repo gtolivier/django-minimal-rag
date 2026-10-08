@@ -1,7 +1,7 @@
 import pytest
 
 from django_minimal_rag.chunking import Chunk, chunk_group, split_text
-from tests.documents import SampleDocument
+from tests.documents import MutableDocument, SampleDocument
 
 # A limit well above the length of the short texts below.
 MAX_LENGTH = 100
@@ -70,6 +70,26 @@ def test_paragraphs_are_joined_by_one_blank_line_whatever_separates_them() -> No
     assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB.\n\nC."]
 
 
+def test_crlf_line_endings_become_lf_between_and_within_paragraphs() -> None:
+    # A line break inside the first paragraph, a blank line between the two.
+    text = "First line,\r\nsecond line.\r\n\r\nNext paragraph."
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [
+        "First line,\nsecond line.\n\nNext paragraph."
+    ]
+
+
+def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
+    # Trailing spaces before each blank line, leading spaces or a tab after it.
+    text = "First paragraph.  \n\n  Second paragraph. \t\n\n\tThird paragraph."
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [
+        "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+    ]
+
+
 def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
     text = "alpha beta gamma delta epsilon"
     max_length = 12
@@ -92,6 +112,43 @@ def test_pieces_of_a_split_paragraph_are_not_merged_with_its_neighbours() -> Non
     # Both neighbours would fit next to the adjacent piece of the split paragraph.
     assert len(f"{before}\n\nalpha beta") <= max_length
     assert len(f"epsilon\n\n{after}") <= max_length
+
+    assert split_text(text, max_length=max_length) == [
+        before,
+        "alpha beta",
+        "gamma delta",
+        "epsilon",
+        after,
+    ]
+
+
+def test_paragraph_longer_than_max_length_is_split_between_lines_packed() -> None:
+    first = "alpha beta"
+    second = "gamma"
+    third = "delta epsilon"
+    first_two = f"{first}\n{second}"
+    text = f"{first_two}\n{third}"
+    max_length = 16
+    assert len(text) > max_length
+    assert len(first_two) <= max_length
+    assert len(third) <= max_length
+
+    # Lines are kept whole and joined by one newline, not split into words
+    # joined by spaces.
+    assert split_text(text, max_length=max_length) == [first_two, third]
+
+
+def test_pieces_of_a_split_line_are_not_merged_with_its_neighbour_lines() -> None:
+    before = "A."
+    long_line = "alpha beta gamma delta epsilon"
+    after = "B."
+    text = f"{before}\n{long_line}\n{after}"
+    max_length = 14
+    assert len(text) > max_length
+    assert len(long_line) > max_length
+    # Both neighbour lines would fit next to the adjacent piece of the split line.
+    assert len(f"{before}\nalpha beta") <= max_length
+    assert len(f"epsilon\n{after}") <= max_length
 
     assert split_text(text, max_length=max_length) == [
         before,
@@ -163,6 +220,39 @@ def test_max_length_below_1_raises_value_error() -> None:
         split_text("A short document.", max_length=0)
 
 
+def count_one_more_than_characters(text: str) -> int:
+    return len(text) + 1
+
+
+def test_character_measuring_more_than_max_length_raises_value_error() -> None:
+    max_length = 1
+    # Even a single character measures 2: no piece of the text could fit the
+    # limit, so the call is refused rather than producing chunks that exceed it.
+    assert count_one_more_than_characters("a") > max_length
+
+    with pytest.raises(ValueError):
+        split_text("abc", max_length=max_length, length=count_one_more_than_characters)
+
+
+def test_cutting_a_long_word_calls_length_a_bounded_number_of_times() -> None:
+    word = "a" * 10_000
+    max_length = 100
+    max_calls = 2_500
+    calls = 0
+
+    def recording_len(text: str) -> int:
+        nonlocal calls
+        calls += 1
+        return len(text)
+
+    # The word has no space: it is cut into 100 pieces, and measuring every
+    # candidate prefix from the end of the word would take far more calls.
+    chunks = split_text(word, max_length=max_length, length=recording_len)
+
+    assert chunks == ["a" * max_length] * (len(word) // max_length)
+    assert calls <= max_calls
+
+
 def note(number: int, *, title: str, text: str) -> SampleDocument:
     """Note ``number`` of the host project, in English and public."""
     return SampleDocument(
@@ -177,6 +267,12 @@ def note(number: int, *, title: str, text: str) -> SampleDocument:
 
 def test_group_with_no_documents_gives_no_chunks() -> None:
     assert chunk_group([]) == []
+
+
+def test_group_max_length_below_1_raises_value_error_even_with_no_documents() -> None:
+    # The limit is refused up front, not only once a document is split by it.
+    with pytest.raises(ValueError, match="max_length"):
+        chunk_group([], max_length=0)
 
 
 def test_each_chunk_of_one_document_holds_the_document_its_text_and_rank() -> None:
@@ -250,3 +346,19 @@ def test_max_length_and_length_are_applied_to_every_document_of_the_group() -> N
         (second, "delta epsilon", 2),
         (second, "zeta theta", 3),
     ]
+
+
+def test_chunk_of_an_unhashable_document_can_be_hashed() -> None:
+    document = MutableDocument(
+        text="A note.",
+        source_key="app.note:1",
+        title="A note",
+        url="https://example.com/notes/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+    # A non-frozen dataclass sets __hash__ to None: the document is unhashable.
+    assert MutableDocument.__hash__ is None
+    chunk = Chunk(document=document, text="A note.", rank=0)
+
+    assert chunk in {chunk}
