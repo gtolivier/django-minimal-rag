@@ -39,6 +39,15 @@ class EmbeddingsWithoutEmbed:
     model: str = "without-embed"
 
 
+class EmbeddingsWithListOnlyEmbed:
+    """An embedding backend whose `embed` accepts a `list`, not any sequence."""
+
+    model: str = "list-only-embed"
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] for _ in texts]
+
+
 def embed_a_text_in_a_child_process(hash_seed: str) -> list[float]:
     result = subprocess.run(
         [sys.executable, "-c", EMBED_A_TEXT_IN_A_CHILD_PROCESS],
@@ -158,6 +167,12 @@ def _rejects_without_model(embeddings: EmbeddingsWithoutModel) -> "Embeddings":
 
 def _rejects_without_embed(embeddings: EmbeddingsWithoutEmbed) -> "Embeddings":
     return embeddings  # type: ignore[return-value]  # no `embed`: not Embeddings
+
+
+def _rejects_list_only_embed(
+    embeddings: EmbeddingsWithListOnlyEmbed,
+) -> "Embeddings":
+    return embeddings  # type: ignore[return-value]  # `embed` refuses a tuple
 
 
 def test_get_embeddings_returns_the_backend_of_the_setting(
