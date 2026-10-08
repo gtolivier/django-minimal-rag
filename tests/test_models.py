@@ -88,6 +88,26 @@ def test_document_with_a_19_character_language_tag_reads_back_the_whole_tag(
 
 
 @pytest.mark.django_db
+def test_document_with_a_300_character_language_tag_reads_back_the_whole_tag(
+    source: Source,
+) -> None:
+    # A private-use sequence of subtags of at most 8 characters keeps the tag
+    # valid BCP 47 however long it grows.
+    long_tag = "en-x-" + "-".join(["abcdefgh"] * 32) + "-abcdefg"
+    assert len(long_tag) == 300
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language=long_tag,
+    )
+
+    stored = Document.objects.get()
+
+    assert stored.language == long_tag
+
+
+@pytest.mark.django_db
 def test_document_with_a_2000_character_title_reads_back_the_whole_title(
     source: Source,
 ) -> None:
