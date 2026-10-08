@@ -19,3 +19,9 @@ def test_fake_embeddings_with_three_dimensions_are_vectors_of_three_floats() -> 
     assert len(vectors) == 1
     assert len(vectors[0]) == 3
     assert all(isinstance(value, float) for value in vectors[0])
+
+
+def test_fake_embeddings_of_two_different_texts_are_different_vectors() -> None:
+    first, second = FakeEmbeddings().embed(["a text", "another text"])
+
+    assert first != second
