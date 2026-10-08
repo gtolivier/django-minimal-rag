@@ -31,7 +31,7 @@ def split_text(
         return []
     limit = _SizeLimit(max_length=max_length, length=length)
     return _pack_splitting_oversized(
-        [_strip_paragraph(paragraph) for paragraph in BLANK_LINES.split(content)],
+        [_strip_line_ends(paragraph) for paragraph in BLANK_LINES.split(content)],
         separator=PARAGRAPH_SEPARATOR,
         limit=limit,
         split=partial(_split_between_lines, limit=limit),
@@ -91,10 +91,10 @@ def _normalize_line_endings(text: str) -> str:
     return LINE_SEPARATOR.join(text.splitlines())
 
 
-def _strip_paragraph(paragraph: str) -> str:
-    """Strip ``paragraph`` and the whitespace at the end of each of its lines."""
+def _strip_line_ends(paragraph: str) -> str:
+    """Strip the whitespace at the end of each line of ``paragraph``."""
     return LINE_SEPARATOR.join(
-        line.rstrip() for line in paragraph.rstrip().split(LINE_SEPARATOR)
+        line.rstrip() for line in paragraph.split(LINE_SEPARATOR)
     )
 
 
