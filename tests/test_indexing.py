@@ -11,6 +11,7 @@ from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import SampleDocument
 from tests.embeddings import EmbeddingFailedError
+from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -271,6 +272,24 @@ def test_replace_stores_a_document_given_twice_in_a_group_twice_with_its_chunks(
     assert list(stored.values_list("document", "rank", "text")) == [
         (first.pk, 0, "Answer to question 1."),
         (second.pk, 1, "Answer to question 1."),
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_stores_all_documents_and_chunks_of_a_group_iterable_only_once() -> (
+    None
+):
+    group = SinglePassSequence([faq_entry(1), faq_entry(2)])
+
+    Indexer().replace({"faq:1": group})
+
+    assert sorted(Document.objects.values_list("source__source_key", "title")) == [
+        ("faq:1", "Question 1"),
+        ("faq:1", "Question 2"),
+    ]
+    assert sorted(Chunk.objects.values_list("document__title", "text")) == [
+        ("Question 1", "Answer to question 1."),
+        ("Question 2", "Answer to question 2."),
     ]
 
 
