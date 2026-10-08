@@ -1,5 +1,5 @@
 import pytest
-from django.db import IntegrityError
+from django.db import DataError, IntegrityError
 
 from django_minimal_rag.models import Chunk, Document, Source
 
@@ -38,6 +38,16 @@ def test_source_with_a_500_character_source_key_reads_back_the_whole_key() -> No
     stored = Source.objects.get()
 
     assert stored.source_key == long_key
+
+
+@pytest.mark.django_db
+def test_source_with_a_501_character_source_key_cannot_be_stored() -> None:
+    base_key = "faq:opening-hours:"
+    too_long_key = base_key + "a" * (501 - len(base_key))
+    assert len(too_long_key) == 501
+
+    with pytest.raises(DataError):
+        Source.objects.create(source_key=too_long_key)
 
 
 @pytest.mark.django_db
