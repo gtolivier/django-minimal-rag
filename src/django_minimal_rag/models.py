@@ -53,4 +53,7 @@ class Chunk(models.Model):
     embedding = VectorField()
 
     def __str__(self) -> str:
+        if len(self.text) > TITLE_STR_MAX_LENGTH:
+            kept_length = TITLE_STR_MAX_LENGTH - len(TITLE_STR_ELLIPSIS)
+            return self.text[:kept_length] + TITLE_STR_ELLIPSIS
         return self.text
