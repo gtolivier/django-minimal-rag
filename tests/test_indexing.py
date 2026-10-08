@@ -107,6 +107,38 @@ def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> No
 
 
 @pytest.mark.django_db
+def test_replace_stores_each_document_of_a_group_with_its_chunks_ranked_across() -> (
+    None
+):
+    paragraphs = [f"Paragraph {number}: " + "word " * 120 for number in range(2)]
+    two_chunk_document = SampleDocument(
+        text="\n\n".join(paragraphs),
+        source_key="guide:1",
+        title="Guide, part 1",
+        url="https://example.com/guide/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+    one_chunk_document = SampleDocument(
+        text="Short closing part.",
+        source_key="guide:1",
+        title="Guide, part 2",
+        url="https://example.com/guide/2/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    Indexer().replace({"guide:1": [two_chunk_document, one_chunk_document]})
+
+    stored = Chunk.objects.order_by("rank")
+    assert list(stored.values_list("rank", "document__title", "text")) == [
+        (0, "Guide, part 1", paragraphs[0].rstrip()),
+        (1, "Guide, part 1", paragraphs[1].rstrip()),
+        (2, "Guide, part 2", "Short closing part."),
+    ]
+
+
+@pytest.mark.django_db
 def test_replace_embeds_each_chunk_with_the_configured_backend(
     settings: "Settings",
 ) -> None:
