@@ -152,8 +152,11 @@ implements.
   generating a migration of its own; an HNSW index, which needs a fixed
   dimension, will be a partial expression index per model, added with
   retrieval. Permissions are an `ArrayField` of names, so host projects
-  install `django.contrib.postgres`. `title` and `url` are unbounded text.
-  The app's primary keys are `BigAutoField`, set by its `AppConfig`.
+  install `django.contrib.postgres`. `title`, `url` and `language` are
+  unbounded text; `source_key` is at most 500 characters, which keeps it
+  within what a PostgreSQL unique index accepts. The app's primary keys
+  are `BigAutoField`, set by its `AppConfig`. Its migration creates the
+  pgvector extension if missing and never drops it on rollback.
 
 ## Open questions
 
