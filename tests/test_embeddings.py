@@ -142,3 +142,21 @@ def test_get_embeddings_builds_the_backend_with_the_options_of_the_setting(
     [vector] = get_embeddings().embed(["a text"])
 
     assert len(vector) == 3
+
+
+def test_get_embeddings_builds_a_new_backend_from_the_setting_on_every_call(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+    }
+    first = get_embeddings()
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "OPTIONS": {"dimensions": 3},
+    }
+
+    second = get_embeddings()
+
+    assert second is not first
+    assert second.model == "fake-3"
