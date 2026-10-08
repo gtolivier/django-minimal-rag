@@ -4,7 +4,6 @@ import django.contrib.postgres.fields
 import django.db.models.deletion
 import pgvector.django.vector
 from django.db import migrations, models
-from pgvector.django import VectorExtension
 
 
 class Migration(migrations.Migration):
@@ -14,7 +13,12 @@ class Migration(migrations.Migration):
 
     operations = [
         # Added by hand: the vector type must exist before Chunk.embedding uses it.
-        VectorExtension(),
+        # Not VectorExtension(): its reverse would drop an extension that other
+        # apps' columns may use, so rolling back leaves it installed.
+        migrations.RunSQL(
+            "CREATE EXTENSION IF NOT EXISTS vector",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.CreateModel(
             name="Document",
             fields=[
