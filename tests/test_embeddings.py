@@ -5,6 +5,7 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 
 from django_minimal_rag.embeddings import FakeEmbeddings, get_embeddings
 from tests.embeddings import SampleEmbeddings
@@ -160,3 +161,15 @@ def test_get_embeddings_builds_a_new_backend_from_the_setting_on_every_call(
 
     assert second is not first
     assert second.model == "fake-3"
+
+
+def test_get_embeddings_without_the_setting_raises_improperly_configured(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+    }
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    with pytest.raises(ImproperlyConfigured):
+        get_embeddings()
