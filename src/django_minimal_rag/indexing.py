@@ -1,7 +1,7 @@
 """Indexing of documents into the storage models."""
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.db import transaction
 
@@ -28,7 +28,13 @@ class Indexer:
             _store_all_chunks(plans, embeddings)
 
 
-_Plan = tuple[list[tuple[Document, str]], dict[str, Any]]
+class _Plan(NamedTuple):
+    """The chunks a source still needs, once its documents are stored."""
+
+    pieces: list[tuple[Document, str]]
+    """Each text to store as a chunk, paired with its stored document, in order."""
+    stored_vectors: dict[str, Any]
+    """The vectors the source's previous chunks had, by text."""
 
 
 def _prepare_source(
@@ -43,7 +49,7 @@ def _prepare_source(
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
-    return _split_documents(documents, stored_documents), stored_vectors
+    return _Plan(_split_documents(documents, stored_documents), stored_vectors)
 
 
 def _remove_source(source_key: str) -> None:
@@ -93,33 +99,43 @@ def _split_documents(
 
 
 def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
-    """Store the chunks of all ``plans``, embedding their new texts in one call.
+    """Store the chunks of all ``plans``, each source's pieces ranked in order."""
+    ranked_pieces = (
+        (rank, stored_document, text)
+        for plan in plans
+        for rank, (stored_document, text) in enumerate(plan.pieces)
+    )
+    Chunk.objects.bulk_create(
+        Chunk(
+            document=stored_document,
+            rank=rank,
+            text=text,
+            embedding_model=embeddings.model,
+            embedding=vector,
+        )
+        for (rank, stored_document, text), vector in zip(
+            ranked_pieces, _vectors(plans, embeddings), strict=True
+        )
+    )
+
+
+def _vectors(plans: Sequence[_Plan], embeddings: Embeddings) -> list[Any]:
+    """Return one vector per piece of ``plans``, embedding new texts in one call.
 
     A text already embedded by the same model keeps its vector.
     """
     new_texts = [
         text
-        for pieces, stored_vectors in plans
-        for _, text in pieces
-        if text not in stored_vectors
+        for plan in plans
+        for _, text in plan.pieces
+        if text not in plan.stored_vectors
     ]
     new_vectors = iter(_embed(new_texts, embeddings))
-    chunks = []
-    for pieces, stored_vectors in plans:
-        for rank, (stored_document, text) in enumerate(pieces):
-            vector = (
-                stored_vectors[text] if text in stored_vectors else next(new_vectors)
-            )
-            chunks.append(
-                Chunk(
-                    document=stored_document,
-                    rank=rank,
-                    text=text,
-                    embedding_model=embeddings.model,
-                    embedding=vector,
-                )
-            )
-    Chunk.objects.bulk_create(chunks)
+    return [
+        plan.stored_vectors[text] if text in plan.stored_vectors else next(new_vectors)
+        for plan in plans
+        for _, text in plan.pieces
+    ]
 
 
 def _embed(texts: Sequence[str], embeddings: Embeddings) -> list[Any]:
