@@ -2,6 +2,7 @@
 
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
+from pgvector.django import VectorField
 
 # A permission name is "<app_label>.<codename>". The bounds mirror Django's own
 # columns, ContentType.app_label and Permission.codename (100 characters each);
@@ -34,3 +35,16 @@ class Document(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class Chunk(models.Model):
+    """A chunk of a document, with its embedding."""
+
+    document = models.ForeignKey(Document, on_delete=models.CASCADE)
+    rank = models.PositiveIntegerField()
+    text = models.TextField()
+    embedding_model = models.CharField(max_length=255)
+    embedding = VectorField(dimensions=3)
+
+    def __str__(self) -> str:
+        return self.text
