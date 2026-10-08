@@ -43,12 +43,7 @@ class FakeEmbeddings:
 def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
     config = _embeddings_config()
-    backend_path = _backend_path(config)
-    try:
-        backend: type[Embeddings] = import_string(backend_path)
-    except ImportError as error:
-        msg = f"Cannot import the embeddings backend {backend_path!r}."
-        raise ImproperlyConfigured(msg) from error
+    backend = _import_backend(_backend_path(config))
     return backend(**config.get("OPTIONS", {}))
 
 
@@ -68,3 +63,12 @@ def _backend_path(config: dict[str, Any]) -> str:
         msg = f"The {EMBEDDINGS_SETTING} setting has no {BACKEND_KEY}."
         raise ImproperlyConfigured(msg) from error
     return backend_path
+
+
+def _import_backend(backend_path: str) -> type[Embeddings]:
+    try:
+        backend: type[Embeddings] = import_string(backend_path)
+    except ImportError as error:
+        msg = f"Cannot import the embeddings backend {backend_path!r}."
+        raise ImproperlyConfigured(msg) from error
+    return backend
