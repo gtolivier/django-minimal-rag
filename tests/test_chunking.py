@@ -223,8 +223,9 @@ def test_pieces_of_a_split_line_are_not_merged_with_its_neighbour_lines() -> Non
     ]
 
 
-def test_no_piece_of_a_split_paragraph_keeps_the_spaces_around_its_lines() -> None:
-    # Trailing spaces before the line break, leading spaces after it.
+def test_trailing_spaces_go_and_a_line_split_between_words_loses_its_indent() -> None:
+    # Trailing spaces end the first line. The indented second line does not fit
+    # max_length: it is split between words, so its indentation is not kept.
     text = "a   \n   b c d e"
     max_length = 6
     assert len(text) > max_length
