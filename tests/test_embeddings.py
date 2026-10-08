@@ -1,4 +1,27 @@
+import json
+import os
+import subprocess
+import sys
+
 from django_minimal_rag.embeddings import FakeEmbeddings
+
+EMBED_A_TEXT_IN_A_CHILD_PROCESS = (
+    "import json\n"
+    "from django_minimal_rag.embeddings import FakeEmbeddings\n"
+    "print(json.dumps(FakeEmbeddings().embed(['a text'])[0]))\n"
+)
+
+
+def embed_a_text_in_a_child_process(hash_seed: str) -> list[float]:
+    result = subprocess.run(
+        [sys.executable, "-c", EMBED_A_TEXT_IN_A_CHILD_PROCESS],
+        env={**os.environ, "PYTHONHASHSEED": hash_seed},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    vector: list[float] = json.loads(result.stdout)
+    return vector
 
 
 def test_fake_embeddings_of_no_texts_is_an_empty_list() -> None:
@@ -47,3 +70,10 @@ def test_fake_embeddings_of_the_same_text_from_two_instances_are_equal() -> None
     [second] = FakeEmbeddings().embed(["a text"])
 
     assert first == second
+
+
+def test_fake_embeddings_of_the_same_text_are_equal_in_other_processes() -> None:
+    [vector] = FakeEmbeddings().embed(["a text"])
+
+    assert embed_a_text_in_a_child_process(hash_seed="1") == vector
+    assert embed_a_text_in_a_child_process(hash_seed="2") == vector
