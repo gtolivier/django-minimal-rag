@@ -3,6 +3,7 @@ import math
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import pytest
@@ -23,6 +24,13 @@ EMBED_A_TEXT_IN_A_CHILD_PROCESS = (
     "from django_minimal_rag.embeddings import FakeEmbeddings\n"
     "print(json.dumps(FakeEmbeddings().embed(['a text'])[0]))\n"
 )
+
+
+class EmbeddingsWithoutModel:
+    """Every member of an embedding backend except `model`."""
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[0.0] for _ in texts]
 
 
 def embed_a_text_in_a_child_process(hash_seed: str) -> list[float]:
@@ -128,6 +136,18 @@ def test_fake_embeddings_are_accepted_where_embeddings_are_expected() -> None:
     embeddings: Embeddings = fake
 
     assert embeddings is fake
+
+
+# A class without `model` is not an embedding backend. That is a static
+# behavior, so it is checked by mypy alone: the function below is never
+# called, and pytest does not collect it (its name does not start with
+# `test_`). It returns its argument where `Embeddings` are expected; mypy
+# must refuse that return, and strict mypy reports the ignore as unused if
+# it does not, which fails the type check.
+
+
+def _rejects_without_model(embeddings: EmbeddingsWithoutModel) -> "Embeddings":
+    return embeddings  # type: ignore[return-value]  # no `model`: not Embeddings
 
 
 def test_get_embeddings_returns_the_backend_of_the_setting(
