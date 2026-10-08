@@ -19,4 +19,5 @@ class Indexer:
                     title=document.title,
                     url=document.url,
                     language=document.language,
+                    permissions=sorted(document.permissions),
                 )
