@@ -118,14 +118,22 @@ def _vectors(
     A text already embedded by the same model keeps its vector.
     """
     new_texts = [text for text in texts if text not in stored_vectors]
-    embedded = embeddings.embed(new_texts) if new_texts else []
-    if len(embedded) != len(new_texts):
-        message = (
-            f"The backend returned {len(embedded)} vectors for {len(new_texts)} texts"
-        )
-        raise ValueError(message)
-    new_vectors = iter(embedded)
+    new_vectors = iter(_embed(new_texts, embeddings))
     return [
         stored_vectors[text] if text in stored_vectors else next(new_vectors)
         for text in texts
     ]
+
+
+def _embed(texts: Sequence[str], embeddings: Embeddings) -> list[Any]:
+    """Return the vectors ``embeddings`` gives ``texts``, one per text.
+
+    Raises ``ValueError`` when the backend returns another number of vectors.
+    """
+    if not texts:
+        return []
+    vectors = embeddings.embed(texts)
+    if len(vectors) != len(texts):
+        message = f"The backend returned {len(vectors)} vectors for {len(texts)} texts"
+        raise ValueError(message)
+    return vectors
