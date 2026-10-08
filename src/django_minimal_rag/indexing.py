@@ -1,7 +1,7 @@
 """Indexing of documents into the storage models."""
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.db import transaction
 
@@ -17,29 +17,74 @@ class Indexer:
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
-        embeddings = get_embeddings()
-        for source_key, documents in groups.items():
-            if documents:
-                _replace_source(source_key, documents, embeddings)
-            else:
+        embeddings: Embeddings | None = None  # built only if a group has documents
+        plans = []
+        for source_key, documents in _checked_groups(groups).items():
+            if not documents:
                 _remove_source(source_key)
+                continue
+            if embeddings is None:
+                embeddings = get_embeddings()
+            plans.append(_prepare_source(source_key, documents, embeddings))
+        if embeddings is not None:
+            _store_all_chunks(plans, embeddings)
 
 
-def _replace_source(
+class _Plan(NamedTuple):
+    """The chunks a source still needs, once its documents are stored."""
+
+    pieces: list[tuple[Document, str]]
+    """Each text to store as a chunk, paired with its stored document, in order."""
+    stored_vectors: dict[str, Any]
+    """The vectors the source's previous chunks had, by text."""
+
+
+def _prepare_source(
     source_key: str, documents: Sequence[DocumentProtocol], embeddings: Embeddings
-) -> None:
-    """Store ``documents`` as the only content of the source ``source_key``."""
+) -> _Plan:
+    """Store ``documents`` as the only documents of ``source_key``, without chunks.
+
+    Return the pieces to chunk and the vectors already stored for the source.
+    """
     source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
-    pieces = _split_documents(documents, stored_documents)
-    _store_chunks(pieces, embeddings, stored_vectors)
+    return _Plan(_split_documents(documents, stored_documents), stored_vectors)
+
+
+def _checked_groups(
+    groups: Mapping[str, Sequence[DocumentProtocol]],
+) -> dict[str, list[DocumentProtocol]]:
+    """Return ``groups`` sorted by source key, each as a list of its documents.
+
+    Raise ``ValueError`` if a document is not of its group's source key.
+    """
+    sorted_groups = {
+        source_key: list(documents)  # a group may be iterable only once
+        for source_key, documents in sorted(groups.items())
+    }
+    for source_key, documents in sorted_groups.items():
+        _check_source_keys(source_key, documents)
+    return sorted_groups
+
+
+def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -> None:
+    """Raise ``ValueError`` if one of ``documents`` is not of ``source_key``."""
+    for document in documents:
+        if document.source_key != source_key:
+            message = (
+                f"Document of source key {document.source_key!r} "
+                f"found in the group {source_key!r}"
+            )
+            raise ValueError(message)
 
 
 def _remove_source(source_key: str) -> None:
     """Remove the source stored under ``source_key``, with its content."""
-    Source.objects.filter(source_key=source_key).delete()
+    sources = Source.objects.filter(source_key=source_key)
+    list(sources.select_for_update())  # lock first, as a replacement does
+    sources.delete()
 
 
 def _stored_vectors(source: Source, embedding_model: str) -> dict[str, Any]:
@@ -83,16 +128,13 @@ def _split_documents(
     ]
 
 
-def _store_chunks(
-    pieces: Sequence[tuple[Document, str]],
-    embeddings: Embeddings,
-    stored_vectors: Mapping[str, Any],
-) -> None:
-    """Store the ``pieces`` of text with their embeddings, ranked in order.
-
-    Each piece is a stored document and a text of it.
-    """
-    vectors = _vectors([text for _, text in pieces], embeddings, stored_vectors)
+def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
+    """Store the chunks of all ``plans``, each source's pieces ranked in order."""
+    ranked_pieces = (
+        (rank, stored_document, text)
+        for plan in plans
+        for rank, (stored_document, text) in enumerate(plan.pieces)
+    )
     Chunk.objects.bulk_create(
         Chunk(
             document=stored_document,
@@ -101,24 +143,42 @@ def _store_chunks(
             embedding_model=embeddings.model,
             embedding=vector,
         )
-        for rank, ((stored_document, text), vector) in enumerate(
-            zip(pieces, vectors, strict=True)
+        for (rank, stored_document, text), vector in zip(
+            ranked_pieces, _vectors(plans, embeddings), strict=True
         )
     )
 
 
-def _vectors(
-    texts: Sequence[str],
-    embeddings: Embeddings,
-    stored_vectors: Mapping[str, Any],
-) -> list[Any]:
-    """Return one vector per text of ``texts``, embedding only those not yet stored.
+def _vectors(plans: Sequence[_Plan], embeddings: Embeddings) -> list[Any]:
+    """Return one vector per piece of ``plans``, embedding new texts in one call.
 
     A text already embedded by the same model keeps its vector.
     """
-    new_texts = [text for text in texts if text not in stored_vectors]
-    new_vectors = iter(embeddings.embed(new_texts) if new_texts else [])
+    new_texts = list(
+        dict.fromkeys(
+            text
+            for plan in plans
+            for _, text in plan.pieces
+            if text not in plan.stored_vectors
+        )
+    )
+    new_vectors = dict(zip(new_texts, _embed(new_texts, embeddings), strict=True))
     return [
-        stored_vectors[text] if text in stored_vectors else next(new_vectors)
-        for text in texts
+        plan.stored_vectors[text] if text in plan.stored_vectors else new_vectors[text]
+        for plan in plans
+        for _, text in plan.pieces
     ]
+
+
+def _embed(texts: Sequence[str], embeddings: Embeddings) -> list[Any]:
+    """Return the vectors ``embeddings`` gives ``texts``, one per text.
+
+    Raises ``ValueError`` when the backend returns another number of vectors.
+    """
+    if not texts:
+        return []
+    vectors = embeddings.embed(texts)
+    if len(vectors) != len(texts):
+        message = f"The backend returned {len(vectors)} vectors for {len(texts)} texts"
+        raise ValueError(message)
+    return vectors

@@ -1,16 +1,26 @@
 import dataclasses
+import re
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 import pytest
-from django.db import DEFAULT_DB_ALIAS, OperationalError, connections, transaction
+from django.db import (
+    DEFAULT_DB_ALIAS,
+    OperationalError,
+    connection,
+    connections,
+    transaction,
+)
+from django.test.utils import CaptureQueriesContext
 from psycopg.errors import LockNotAvailable
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
-from tests.documents import SampleDocument
+from tests.documents import MutableDocument, SampleDocument
 from tests.embeddings import EmbeddingFailedError
+from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -34,6 +44,27 @@ def use_recording_embeddings(settings: "Settings") -> list[str]:
     return embedded
 
 
+def use_call_recording_embeddings(settings: "Settings") -> list[list[str]]:
+    """Configure ``RecordingEmbeddings``; return the list of its ``embed()`` calls.
+
+    Each call is recorded as the list of the texts it was given.
+    """
+    calls: list[list[str]] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.RecordingEmbeddings",
+        "OPTIONS": {"embedded": [], "calls": calls},
+    }
+    return calls
+
+
+def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
+    """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
+        "OPTIONS": {"vector_count": vector_count},
+    }
+
+
 def faq_entry(number: int) -> SampleDocument:
     """FAQ entry ``number`` of the host project, in English and public."""
     return SampleDocument(
@@ -44,6 +75,11 @@ def faq_entry(number: int) -> SampleDocument:
         language="en",
         permissions=frozenset(),
     )
+
+
+def faq_entry_under(source_key: str, number: int) -> SampleDocument:
+    """FAQ entry ``number``, belonging to the source ``source_key``."""
+    return dataclasses.replace(faq_entry(number), source_key=source_key)
 
 
 def paragraphs_of_one_chunk_each(count: int) -> list[str]:
@@ -72,6 +108,25 @@ def stored_content(source: Source) -> tuple[list[object], list[object]]:
     return documents, chunks
 
 
+def source_keys_locked_by(queries: Iterable[Mapping[str, str]]) -> list[str]:
+    """The ``source_key`` of each source row ``queries`` lock, in order.
+
+    Only queries reading the source table ``FOR UPDATE`` count; each query's
+    ``sql`` has its parameters interpolated.
+    """
+    table = connection.ops.quote_name(Source._meta.db_table)
+    column = connection.ops.quote_name("source_key")
+    key_lookup = re.compile(
+        rf"{re.escape(table)}\.{re.escape(column)} = '((?:[^']|'')*)'"
+    )
+    return [
+        match.group(1).replace("''", "'")
+        for query in queries
+        if f"FROM {table}" in query["sql"] and "FOR UPDATE" in query["sql"]
+        for match in key_lookup.finditer(query["sql"])
+    ]
+
+
 @pytest.mark.django_db
 def test_replace_with_no_groups_stores_nothing() -> None:
     Indexer().replace({})
@@ -79,6 +134,15 @@ def test_replace_with_no_groups_stores_nothing() -> None:
     assert not Source.objects.exists()
     assert not Document.objects.exists()
     assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_replace_with_no_groups_succeeds_without_an_embedding_backend_configured(
+    settings: "Settings",
+) -> None:
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    Indexer().replace({})
 
 
 @pytest.mark.django_db
@@ -102,7 +166,7 @@ def test_replace_stores_each_group_under_its_own_source() -> None:
     Indexer().replace(
         {
             "faq:1": [faq_entry(1)],
-            "faq:2": [faq_entry(2), faq_entry(3)],
+            "faq:2": [faq_entry(2), faq_entry_under("faq:2", 3)],
         }
     )
 
@@ -122,7 +186,9 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
     Indexer().replace({"faq:1": [faq_entry(1)]})
     source_pk = Source.objects.get().pk
 
-    Indexer().replace({"faq:1": [faq_entry(2), faq_entry(3)]})
+    Indexer().replace(
+        {"faq:1": [faq_entry_under("faq:1", 2), faq_entry_under("faq:1", 3)]}
+    )
 
     assert list(Source.objects.values_list("pk", "source_key")) == [
         (source_pk, "faq:1")
@@ -139,7 +205,7 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
 
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     Indexer().replace({"faq:1": []})
 
@@ -151,6 +217,20 @@ def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_for_an_unknown_key_stores_nothing() -> None:
     Indexer().replace({"faq:1": []})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_replace_with_only_empty_groups_removes_sources_without_a_backend_configured(
+    settings: "Settings",
+) -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    Indexer().replace({"faq:1": [], "faq:2": []})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -275,6 +355,45 @@ def test_replace_stores_a_document_given_twice_in_a_group_twice_with_its_chunks(
 
 
 @pytest.mark.django_db
+def test_replace_stores_all_documents_and_chunks_of_a_group_iterable_only_once() -> (
+    None
+):
+    group = SinglePassSequence([faq_entry(1), faq_entry_under("faq:1", 2)])
+
+    Indexer().replace({"faq:1": group})
+
+    assert sorted(Document.objects.values_list("source__source_key", "title")) == [
+        ("faq:1", "Question 1"),
+        ("faq:1", "Question 2"),
+    ]
+    assert sorted(Chunk.objects.values_list("document__title", "text")) == [
+        ("Question 1", "Answer to question 1."),
+        ("Question 2", "Answer to question 2."),
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_stores_an_unhashable_document_with_its_chunks() -> None:
+    document = MutableDocument(
+        text="Answer to question 1.",
+        source_key="faq:1",
+        title="Question 1",
+        url="https://example.com/faq/1/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    Indexer().replace({"faq:1": [document]})
+
+    assert list(
+        Document.objects.values_list("source__source_key", "title", "url", "language")
+    ) == [("faq:1", "Question 1", "https://example.com/faq/1/", "en")]
+    assert list(Chunk.objects.values_list("document__title", "rank", "text")) == [
+        ("Question 1", 0, "Answer to question 1.")
+    ]
+
+
+@pytest.mark.django_db
 def test_replace_embeds_each_chunk_with_the_configured_backend(
     settings: "Settings",
 ) -> None:
@@ -297,13 +416,13 @@ def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     }
     embedded_before = len(embedded)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert embedded[embedded_before:] == []
     assert {
@@ -316,14 +435,26 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2), faq_entry(3)]})
+    Indexer().replace(
+        {
+            "faq:1": [
+                faq_entry(1),
+                faq_entry_under("faq:1", 2),
+                faq_entry_under("faq:1", 3),
+            ]
+        }
+    )
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     }
     embedded_before = len(embedded)
-    changed_entry = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
+    changed_entry = dataclasses.replace(
+        faq_entry_under("faq:1", 2), text="New answer to question 2."
+    )
 
-    Indexer().replace({"faq:1": [faq_entry(1), changed_entry, faq_entry(3)]})
+    Indexer().replace(
+        {"faq:1": [faq_entry(1), changed_entry, faq_entry_under("faq:1", 3)]}
+    )
 
     assert embedded[embedded_before:] == ["New answer to question 2."]
     vectors_after = {chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()}
@@ -342,10 +473,10 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
 def test_replace_re_embeds_a_text_stored_under_another_model(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     embedded = use_recording_embeddings(settings)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert sorted(embedded) == ["Answer to question 1.", "Answer to question 2."]
     assert {
@@ -355,6 +486,39 @@ def test_replace_re_embeds_a_text_stored_under_another_model(
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded)
     }
+
+
+@pytest.mark.django_db
+def test_replace_of_several_groups_embeds_the_new_texts_of_all_in_one_backend_call(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+
+    Indexer().replace(
+        {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
+    )
+
+    assert calls == [
+        ["Answer to question 1.", "Answer to question 2.", "Answer to question 3."]
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
+    settings: "Settings",
+) -> None:
+    embedded = use_recording_embeddings(settings)
+    shared_text = "Shared answer."
+    entry_1 = dataclasses.replace(faq_entry(1), text=shared_text)
+    entry_2 = dataclasses.replace(faq_entry(2), text=shared_text)
+
+    Indexer().replace({"faq:1": [entry_1], "faq:2": [entry_2]})
+
+    assert embedded == [shared_text]
+    assert {
+        chunk.document.source.source_key: list(chunk.embedding)
+        for chunk in Chunk.objects.select_related("document__source")
+    } == {"faq:1": [0.0, 1.0], "faq:2": [0.0, 1.0]}
 
 
 @pytest.mark.django_db
@@ -377,6 +541,72 @@ def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
     assert stored_content(source) == content_before
 
 
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vectors(
+    settings: "Settings",
+) -> None:
+    use_miscounting_embeddings(settings, vector_count=1)
+    two_chunk_document = SampleDocument(
+        text="\n\n".join(paragraphs_of_one_chunk_each(2)),
+        source_key="guide:1",
+        title="Guide",
+        url="https://example.com/guide/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+    # Both counts, in any order and wording: 2 texts, 1 vector.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
+        Indexer().replace({"guide:1": [two_chunk_document]})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_replace_raises_when_the_backend_returns_too_many_vectors(
+    settings: "Settings",
+) -> None:
+    use_miscounting_embeddings(settings, vector_count=3)
+
+    # Both counts, in any order and wording: 1 text, 3 vectors.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\b1\b)(?=.*\b3\b)"):
+        Indexer().replace({"faq:1": [faq_entry(1)]})
+
+
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_for_a_document_of_another_source_key() -> (
+    None
+):
+    # Both keys, in any order and wording: the group's and the document's.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:1\b)(?=.*\bfaq:2\b)"):
+        Indexer().replace({"faq:1": [faq_entry(2)]})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_for_the_last_document_of_a_later_group() -> (
+    None
+):
+    # Both keys, in any order and wording: the second group's and its last
+    # document's.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:5\b)(?=.*\bfaq:7\b)"):
+        Indexer().replace(
+            {
+                "faq:3": [faq_entry(3)],
+                "faq:5": [faq_entry(5), faq_entry_under("faq:5", 6), faq_entry(7)],
+            }
+        )
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
 @pytest.mark.django_db(transaction=True)
 def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
     None
@@ -393,7 +623,7 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
     probe = f"SELECT 1 FROM {table} WHERE id = %s FOR SHARE NOWAIT"
     try:
         with transaction.atomic():
-            Indexer().replace({"faq:1": [faq_entry(2)]})
+            Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
 
             with (
                 pytest.raises(OperationalError) as raised,
@@ -404,3 +634,63 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
         other_connection.close()
 
     assert isinstance(raised.value.__cause__, LockNotAvailable)
+
+
+@pytest.mark.django_db
+def test_replace_locks_the_replaced_sources_in_sorted_source_key_order() -> None:
+    # Two calls replacing overlapping sources must lock their rows in the same
+    # order, whatever the order of their groups, or they can deadlock.
+    Indexer().replace(
+        {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        Indexer().replace(
+            {"faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)], "faq:1": [faq_entry(1)]}
+        )
+
+    assert source_keys_locked_by(captured.captured_queries) == [
+        "faq:1",
+        "faq:2",
+        "faq:3",
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_with_an_empty_group_locks_its_source_before_deleting_anything() -> (
+    None
+):
+    # A replacement locks the source row, then deletes its documents; a removal
+    # must take the same lock first, or the two can deadlock.
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    with CaptureQueriesContext(connection) as captured:
+        Indexer().replace({"faq:1": []})
+
+    queries = captured.captured_queries
+    first_delete = next(
+        index
+        for index, query in enumerate(queries)
+        if query["sql"].startswith("DELETE")
+    )
+    assert source_keys_locked_by(queries[:first_delete]) == ["faq:1"]
+
+
+@pytest.mark.django_db
+def test_replace_locks_removed_and_replaced_sources_in_sorted_source_key_order() -> (
+    None
+):
+    # Two calls sharing sources must lock their rows in the same order, whether
+    # each source is replaced or removed, or they can deadlock.
+    Indexer().replace(
+        {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        Indexer().replace({"faq:3": [faq_entry(3)], "faq:1": [], "faq:2": []})
+
+    assert source_keys_locked_by(captured.captured_queries) == [
+        "faq:1",
+        "faq:2",
+        "faq:3",
+    ]

@@ -26,7 +26,11 @@ class Embeddings(Protocol):
         ...
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        """Return one vector per text."""
+        """Return one vector per text, in the order of ``texts``.
+
+        ``texts`` may hold any number of texts: a backend whose API limits the
+        size of a request splits ``texts`` into batches itself.
+        """
         ...
 
 
