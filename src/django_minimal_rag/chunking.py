@@ -104,9 +104,12 @@ def _strip_lines(paragraph: str) -> str:
 
 
 def _require_every_character_fits(text: str, *, limit: _SizeLimit) -> None:
-    """Raise ``ValueError`` if a character of ``text`` alone does not fit ``limit``."""
+    """Raise ``ValueError`` if a non-whitespace character of ``text`` does not fit.
+
+    Whitespace never reaches a chunk alone: words are cut around it.
+    """
     for character in dict.fromkeys(text):
-        if not limit.fits(character):
+        if not character.isspace() and not limit.fits(character):
             msg = (
                 f"character {character!r} measures {limit.length(character)}, "
                 f"more than max_length ({limit.max_length})"
