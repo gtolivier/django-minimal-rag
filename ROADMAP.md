@@ -136,9 +136,10 @@ implements.
   tokens passes its tokenizer's count, without the package depending on any
   tokenizer. A limit no chunk can meet — below 1, or smaller than a
   character of a word that has to be cut — raises `ValueError` rather than
-  producing an oversized chunk. No overlap between chunks, and the title is not repeated in them: it is stored with
-  its document. A group's chunks are ranked from 0, across its documents in
-  their order; a document with no text gives no chunk and takes no rank.
+  producing an oversized chunk. No overlap between chunks, and the title is
+  not repeated in them: it is stored with its document. A group's chunks
+  are ranked from 0, across its documents in their order; a document with
+  no text gives no chunk and takes no rank.
 - **Bring your own embedding model.** The project chooses its embedding
   model, through a backend it names in a setting; the package ships no
   model of its own, and nothing in it assumes a given provider or vector
