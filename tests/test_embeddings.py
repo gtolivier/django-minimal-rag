@@ -267,6 +267,18 @@ def test_get_embeddings_with_a_non_mapping_setting_raises_improperly_configured(
         get_embeddings()
 
 
+def test_get_embeddings_with_non_mapping_options_raises_improperly_configured(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
+        "OPTIONS": [("dimensions", 3)],
+    }
+
+    with pytest.raises(ImproperlyConfigured):
+        get_embeddings()
+
+
 def test_get_embeddings_with_an_unimportable_backend_raises_improperly_configured(
     settings: "Settings",
 ) -> None:
