@@ -1,7 +1,7 @@
 """Embedding backends."""
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
 from django.conf import settings
 from django.utils.module_loading import import_string
@@ -40,6 +40,6 @@ class FakeEmbeddings:
 
 def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
-    config: dict[str, str] = getattr(settings, EMBEDDINGS_SETTING)
+    config: dict[str, Any] = getattr(settings, EMBEDDINGS_SETTING)
     backend: type[Embeddings] = import_string(config["BACKEND"])
-    return backend()
+    return backend(**config.get("OPTIONS", {}))
