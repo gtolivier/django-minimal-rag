@@ -11,4 +11,4 @@ class FakeEmbeddings:
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one vector per text."""
-        return [[0.0] * self.dimensions for _ in texts]
+        return [[float(len(text))] * self.dimensions for text in texts]
