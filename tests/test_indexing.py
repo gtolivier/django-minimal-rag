@@ -8,6 +8,7 @@ from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import SampleDocument
+from tests.embeddings import EmbeddingFailedError
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -31,6 +32,27 @@ def faq_entry(number: int) -> SampleDocument:
         language="en",
         permissions=frozenset(),
     )
+
+
+def stored_content(source: Source) -> tuple[list[object], list[object]]:
+    """The documents and chunks stored under ``source``, ordered by primary key."""
+    documents: list[object] = list(
+        Document.objects.filter(source=source)
+        .order_by("pk")
+        .values_list("pk", "title", "url", "language", "permissions")
+    )
+    chunks: list[object] = [
+        (
+            chunk.pk,
+            chunk.document_id,
+            chunk.rank,
+            chunk.text,
+            chunk.embedding_model,
+            list(chunk.embedding),
+        )
+        for chunk in Chunk.objects.filter(document__source=source).order_by("pk")
+    ]
+    return documents, chunks
 
 
 @pytest.mark.django_db
@@ -317,3 +339,23 @@ def test_replace_re_embeds_a_text_stored_under_another_model(
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded)
     }
+
+
+@pytest.mark.django_db
+def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
+    settings: "Settings",
+) -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+    source = Source.objects.get(source_key="faq:1")
+    content_before = stored_content(source)
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.FailingEmbeddings",
+        "OPTIONS": {"failing_text": "New answer to question 2."},
+    }
+    new_entry_1 = dataclasses.replace(faq_entry(1), text="New answer to question 1.")
+    new_entry_2 = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
+
+    with pytest.raises(EmbeddingFailedError):
+        Indexer().replace({"faq:1": [new_entry_1], "faq:2": [new_entry_2]})
+
+    assert stored_content(source) == content_before
