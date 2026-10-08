@@ -11,7 +11,7 @@ class FakeEmbeddings:
             msg = "dimensions must be positive"
             raise ValueError(msg)
         self.dimensions = dimensions
-        self.model = "fake-8"
+        self.model = f"fake-{dimensions}"
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one vector per text."""
