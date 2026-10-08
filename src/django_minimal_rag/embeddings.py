@@ -72,10 +72,13 @@ def _embeddings_config() -> Mapping[str, Any]:
 
 def _backend_path(config: Mapping[str, Any]) -> str:
     try:
-        backend_path: str = config[BACKEND_KEY]
+        backend_path: object = config[BACKEND_KEY]
     except KeyError as error:
         msg = f"The {EMBEDDINGS_SETTING} setting has no {BACKEND_KEY}."
         raise ImproperlyConfigured(msg) from error
+    if not isinstance(backend_path, str):
+        msg = f"The {BACKEND_KEY} of {EMBEDDINGS_SETTING} must be a string."
+        raise ImproperlyConfigured(msg)
     return backend_path
 
 
