@@ -46,5 +46,10 @@ def get_embeddings() -> Embeddings:
     except AttributeError as error:
         msg = f"The {EMBEDDINGS_SETTING} setting is not set."
         raise ImproperlyConfigured(msg) from error
-    backend: type[Embeddings] = import_string(config["BACKEND"])
+    try:
+        path: str = config["BACKEND"]
+    except KeyError as error:
+        msg = f"The {EMBEDDINGS_SETTING} setting has no BACKEND."
+        raise ImproperlyConfigured(msg) from error
+    backend: type[Embeddings] = import_string(path)
     return backend(**config.get("OPTIONS", {}))
