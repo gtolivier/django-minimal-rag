@@ -24,6 +24,16 @@ def fake_embeddings(settings: "Settings") -> None:
     }
 
 
+def use_recording_embeddings(settings: "Settings") -> list[str]:
+    """Configure ``RecordingEmbeddings``; return the list it records texts in."""
+    embedded: list[str] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.RecordingEmbeddings",
+        "OPTIONS": {"embedded": embedded},
+    }
+    return embedded
+
+
 def faq_entry(number: int) -> SampleDocument:
     """FAQ entry ``number`` of the host project, in English and public."""
     return SampleDocument(
@@ -34,6 +44,11 @@ def faq_entry(number: int) -> SampleDocument:
         language="en",
         permissions=frozenset(),
     )
+
+
+def paragraphs_of_one_chunk_each(count: int) -> list[str]:
+    """``count`` paragraphs, each too long to share a chunk with another."""
+    return [f"Paragraph {number}: " + "word " * 120 for number in range(count)]
 
 
 def stored_content(source: Source) -> tuple[list[object], list[object]]:
@@ -169,13 +184,8 @@ def test_replace_leaves_sources_absent_from_the_call_as_they_are() -> None:
 
 @pytest.mark.django_db
 def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> None:
-    document = SampleDocument(
-        text="Answer to question 1.",
-        source_key="faq:1",
-        title="Question 1",
-        url="https://example.com/faq/1/",
-        language="en",
-        permissions=frozenset({"faq.view_faq", "app.change_note"}),
+    document = dataclasses.replace(
+        faq_entry(1), permissions=frozenset({"faq.view_faq", "app.change_note"})
     )
 
     Indexer().replace({"faq:1": [document]})
@@ -197,7 +207,7 @@ def test_replace_stores_a_short_document_text_as_one_chunk_of_rank_0() -> None:
 
 @pytest.mark.django_db
 def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> None:
-    paragraphs = [f"Paragraph {number}: " + "word " * 120 for number in range(5)]
+    paragraphs = paragraphs_of_one_chunk_each(5)
     long_document = SampleDocument(
         text="\n\n".join(paragraphs),
         source_key="guide:1",
@@ -220,7 +230,7 @@ def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> No
 def test_replace_stores_each_document_of_a_group_with_its_chunks_ranked_across() -> (
     None
 ):
-    paragraphs = [f"Paragraph {number}: " + "word " * 120 for number in range(2)]
+    paragraphs = paragraphs_of_one_chunk_each(2)
     two_chunk_document = SampleDocument(
         text="\n\n".join(paragraphs),
         source_key="guide:1",
@@ -270,11 +280,7 @@ def test_replace_embeds_each_chunk_with_the_configured_backend(
 def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
     settings: "Settings",
 ) -> None:
-    embedded: list[str] = []
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.RecordingEmbeddings",
-        "OPTIONS": {"embedded": embedded},
-    }
+    embedded = use_recording_embeddings(settings)
     Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
@@ -293,11 +299,7 @@ def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
 def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
     settings: "Settings",
 ) -> None:
-    embedded: list[str] = []
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.RecordingEmbeddings",
-        "OPTIONS": {"embedded": embedded},
-    }
+    embedded = use_recording_embeddings(settings)
     Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2), faq_entry(3)]})
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
@@ -325,11 +327,7 @@ def test_replace_re_embeds_a_text_stored_under_another_model(
     settings: "Settings",
 ) -> None:
     Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
-    embedded: list[str] = []
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.RecordingEmbeddings",
-        "OPTIONS": {"embedded": embedded},
-    }
+    embedded = use_recording_embeddings(settings)
 
     Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
 
