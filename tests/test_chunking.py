@@ -80,6 +80,16 @@ def test_crlf_line_endings_become_lf_between_and_within_paragraphs() -> None:
     ]
 
 
+def test_lone_cr_line_endings_become_lf_between_and_within_paragraphs() -> None:
+    # A line break inside the first paragraph, a blank line between the two.
+    text = "First line,\rsecond line.\r\rNext paragraph."
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [
+        "First line,\nsecond line.\n\nNext paragraph."
+    ]
+
+
 def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
     # Trailing spaces before each blank line, leading spaces or a tab after it.
     text = "First paragraph.  \n\n  Second paragraph. \t\n\n\tThird paragraph."
