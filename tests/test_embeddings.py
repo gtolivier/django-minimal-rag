@@ -173,3 +173,12 @@ def test_get_embeddings_without_the_setting_raises_improperly_configured(
 
     with pytest.raises(ImproperlyConfigured):
         get_embeddings()
+
+
+def test_get_embeddings_without_a_backend_raises_improperly_configured(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {"OPTIONS": {"dimensions": 3}}
+
+    with pytest.raises(ImproperlyConfigured):
+        get_embeddings()
