@@ -217,3 +217,32 @@ def test_chunk_without_an_embedding_cannot_be_stored() -> None:
             text="The shop opens at 9 am.",
             embedding_model="text-embedding-3-small",
         )
+
+
+@pytest.mark.django_db
+def test_deleting_a_document_deletes_its_chunks() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    document = Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+    Chunk.objects.create(
+        document=document,
+        rank=0,
+        text="The shop opens at 9 am.",
+        embedding_model="text-embedding-3-small",
+        embedding=[0.5, -1.0, 0.25],
+    )
+    Chunk.objects.create(
+        document=document,
+        rank=1,
+        text="The shop closes at 6 pm.",
+        embedding_model="text-embedding-3-small",
+        embedding=[0.25, 0.5, -1.0],
+    )
+
+    document.delete()
+
+    assert not Chunk.objects.exists()
