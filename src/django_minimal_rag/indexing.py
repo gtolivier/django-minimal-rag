@@ -82,7 +82,9 @@ def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -
 
 def _remove_source(source_key: str) -> None:
     """Remove the source stored under ``source_key``, with its content."""
-    Source.objects.filter(source_key=source_key).delete()
+    sources = Source.objects.filter(source_key=source_key)
+    list(sources.select_for_update())  # lock first, as a replacement does
+    sources.delete()
 
 
 def _stored_vectors(source: Source, embedding_model: str) -> dict[str, Any]:
