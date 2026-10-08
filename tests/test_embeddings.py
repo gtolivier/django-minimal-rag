@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     # mypy, so the import is not needed when the tests run.
     from django_minimal_rag.embeddings import Embeddings
 
+FAKE_EMBEDDINGS_BACKEND = "django_minimal_rag.embeddings.FakeEmbeddings"
+
 EMBED_A_TEXT_IN_A_CHILD_PROCESS = (
     "import json\n"
     "from django_minimal_rag.embeddings import FakeEmbeddings\n"
@@ -69,7 +71,7 @@ def test_fake_embeddings_of_no_texts_is_an_empty_list() -> None:
     assert FakeEmbeddings().embed([]) == []
 
 
-def test_fake_embeddings_of_one_text_is_one_vector_of_eight_floats() -> None:
+def test_fake_embeddings_of_one_text_is_one_vector_of_the_default_dimension() -> None:
     vectors = FakeEmbeddings().embed(["a text"])
 
     assert len(vectors) == 1
@@ -137,11 +139,11 @@ def test_fake_embeddings_with_zero_dimensions_raise_value_error() -> None:
         FakeEmbeddings(dimensions=0)
 
 
-def test_fake_embeddings_model_is_fake_8() -> None:
+def test_fake_embeddings_model_names_the_default_dimension() -> None:
     assert FakeEmbeddings().model == "fake-8"
 
 
-def test_fake_embeddings_with_three_dimensions_model_is_fake_3() -> None:
+def test_fake_embeddings_model_names_the_given_dimensions() -> None:
     assert FakeEmbeddings(dimensions=3).model == "fake-3"
 
 
@@ -179,7 +181,7 @@ def test_get_embeddings_returns_the_backend_of_the_setting(
     settings: "Settings",
 ) -> None:
     settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
     }
 
     assert isinstance(get_embeddings(), FakeEmbeddings)
@@ -199,7 +201,7 @@ def test_get_embeddings_builds_the_backend_with_the_options_of_the_setting(
     settings: "Settings",
 ) -> None:
     settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
         "OPTIONS": {"dimensions": 3},
     }
 
@@ -212,11 +214,11 @@ def test_get_embeddings_builds_a_new_backend_from_the_setting_on_every_call(
     settings: "Settings",
 ) -> None:
     settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
     }
     first = get_embeddings()
     settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
         "OPTIONS": {"dimensions": 3},
     }
 
@@ -230,7 +232,7 @@ def test_get_embeddings_without_the_setting_raises_improperly_configured(
     settings: "Settings",
 ) -> None:
     settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
     }
     del settings.MINIMAL_RAG_EMBEDDINGS
 
