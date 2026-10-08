@@ -83,6 +83,15 @@ def test_replace_with_no_groups_stores_nothing() -> None:
 
 
 @pytest.mark.django_db
+def test_replace_with_no_groups_succeeds_without_an_embedding_backend_configured(
+    settings: "Settings",
+) -> None:
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    Indexer().replace({})
+
+
+@pytest.mark.django_db
 def test_replace_group_of_one_document_creates_source_with_group_key() -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
 
