@@ -40,3 +40,21 @@ def test_replace_group_of_one_document_stores_it_under_the_group_source() -> Non
     assert list(
         Document.objects.values_list("source__source_key", "title", "url", "language")
     ) == [("faq:1", "Question 1", "https://example.com/faq/1/", "en")]
+
+
+@pytest.mark.django_db
+def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> None:
+    document = SampleDocument(
+        text="Answer to question 1.",
+        source_key="faq:1",
+        title="Question 1",
+        url="https://example.com/faq/1/",
+        language="en",
+        permissions=frozenset({"faq.view_faq", "app.change_note"}),
+    )
+
+    Indexer().replace({"faq:1": [document]})
+
+    assert list(Document.objects.values_list("permissions", flat=True)) == [
+        ["app.change_note", "faq.view_faq"]
+    ]
