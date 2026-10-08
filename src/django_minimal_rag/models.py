@@ -10,3 +10,15 @@ class Source(models.Model):
 
     def __str__(self) -> str:
         return self.source_key
+
+
+class Document(models.Model):
+    """A document stored for a source."""
+
+    source = models.ForeignKey(Source, on_delete=models.CASCADE)
+    title = models.CharField(max_length=255)
+    url = models.URLField()
+    language = models.CharField(max_length=16)
+
+    def __str__(self) -> str:
+        return self.title
