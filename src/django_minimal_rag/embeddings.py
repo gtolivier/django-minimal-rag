@@ -9,6 +9,7 @@ from django.utils.module_loading import import_string
 
 FAKE_EMBEDDINGS_DEFAULT_DIMENSION = 8
 EMBEDDINGS_SETTING = "MINIMAL_RAG_EMBEDDINGS"
+BACKEND_KEY = "BACKEND"
 
 
 class Embeddings(Protocol):
@@ -41,15 +42,24 @@ class FakeEmbeddings:
 
 def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
+    config = _embeddings_config()
+    backend: type[Embeddings] = import_string(_backend_path(config))
+    return backend(**config.get("OPTIONS", {}))
+
+
+def _embeddings_config() -> dict[str, Any]:
     try:
         config: dict[str, Any] = getattr(settings, EMBEDDINGS_SETTING)
     except AttributeError as error:
         msg = f"The {EMBEDDINGS_SETTING} setting is not set."
         raise ImproperlyConfigured(msg) from error
+    return config
+
+
+def _backend_path(config: dict[str, Any]) -> str:
     try:
-        path: str = config["BACKEND"]
+        backend_path: str = config[BACKEND_KEY]
     except KeyError as error:
-        msg = f"The {EMBEDDINGS_SETTING} setting has no BACKEND."
+        msg = f"The {EMBEDDINGS_SETTING} setting has no {BACKEND_KEY}."
         raise ImproperlyConfigured(msg) from error
-    backend: type[Embeddings] = import_string(path)
-    return backend(**config.get("OPTIONS", {}))
+    return backend_path
