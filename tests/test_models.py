@@ -220,6 +220,27 @@ def test_str_of_a_document_with_an_80_character_title_is_its_title(
 
 
 @pytest.mark.django_db
+def test_str_of_a_document_with_an_81_character_title_is_cut_to_79_plus_ellipsis(
+    source: Source,
+) -> None:
+    # Characters 79, 80 and 81 are "X", "Y" and "Z", so the cut shows exactly
+    # where it falls: "X" is kept, "Y" and "Z" are replaced by the ellipsis.
+    prefix = ("Opening hours " * 6)[:78]
+    title = prefix + "XYZ"
+    assert len(title) == 81
+    document = Document.objects.create(
+        source=source,
+        title=title,
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+
+    expected = prefix + "X…"
+    assert len(expected) == 80
+    assert str(document) == expected
+
+
+@pytest.mark.django_db
 def test_document_stored_with_permissions_reads_back_the_same_names(
     source: Source,
 ) -> None:
