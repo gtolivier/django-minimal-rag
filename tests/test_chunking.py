@@ -90,6 +90,19 @@ def test_lone_cr_line_endings_become_lf_between_and_within_paragraphs() -> None:
     ]
 
 
+def test_every_other_line_boundary_python_recognizes_becomes_lf() -> None:
+    # NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR, vertical tab, form feed and
+    # the file, group and record separators: the other boundaries of
+    # str.splitlines.
+    text = (
+        "a\N{NEXT LINE}b\N{LINE SEPARATOR}c\N{PARAGRAPH SEPARATOR}d"
+        "\ve\ff\x1cg\x1dh\x1ei"
+    )
+    assert text.splitlines() == list("abcdefghi")
+
+    assert split_text(text, max_length=MAX_LENGTH) == ["a\nb\nc\nd\ne\nf\ng\nh\ni"]
+
+
 def test_cr_followed_by_crlf_counts_as_two_line_endings_between_paragraphs() -> None:
     # A lone "\r" then a "\r\n": two line endings, so a blank line.
     text = "A.\r\r\nB."
