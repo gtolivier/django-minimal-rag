@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from django_minimal_rag.chunking import chunk_group
+from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import SampleDocument
@@ -103,3 +104,21 @@ def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> No
     stored = Chunk.objects.filter(document=document).order_by("rank")
     assert len(expected) > 1
     assert list(stored.values_list("rank", "text")) == expected
+
+
+@pytest.mark.django_db
+def test_replace_embeds_each_chunk_with_the_configured_backend(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "OPTIONS": {"dimensions": 3},
+    }
+    backend = FakeEmbeddings(dimensions=3)
+    [expected_vector] = backend.embed(["Answer to question 1."])
+
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    chunk = Chunk.objects.get()
+    assert chunk.embedding_model == "fake-3"
+    assert list(chunk.embedding) == expected_vector
