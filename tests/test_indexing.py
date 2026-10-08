@@ -586,6 +586,25 @@ def test_replace_raises_and_stores_nothing_for_a_document_of_another_source_key(
     assert not Chunk.objects.exists()
 
 
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_for_the_last_document_of_a_later_group() -> (
+    None
+):
+    # Both keys, in any order and wording: the second group's and its last
+    # document's.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:5\b)(?=.*\bfaq:7\b)"):
+        Indexer().replace(
+            {
+                "faq:3": [faq_entry(3)],
+                "faq:5": [faq_entry(5), faq_entry_under("faq:5", 6), faq_entry(7)],
+            }
+        )
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
 @pytest.mark.django_db(transaction=True)
 def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
     None
