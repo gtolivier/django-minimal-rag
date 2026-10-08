@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
 FAKE_EMBEDDINGS_DEFAULT_DIMENSION = 8
@@ -40,6 +41,10 @@ class FakeEmbeddings:
 
 def get_embeddings() -> Embeddings:
     """Return the backend configured by the MINIMAL_RAG_EMBEDDINGS setting."""
-    config: dict[str, Any] = getattr(settings, EMBEDDINGS_SETTING)
+    try:
+        config: dict[str, Any] = getattr(settings, EMBEDDINGS_SETTING)
+    except AttributeError as error:
+        msg = f"The {EMBEDDINGS_SETTING} setting is not set."
+        raise ImproperlyConfigured(msg) from error
     backend: type[Embeddings] = import_string(config["BACKEND"])
     return backend(**config.get("OPTIONS", {}))
