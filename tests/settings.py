@@ -11,6 +11,10 @@ import os
 
 SECRET_KEY = "tests-only-not-secret"
 INSTALLED_APPS = ["django_minimal_rag"]
+# Plays a host project that still uses AutoField (an older project): the app
+# must choose its own primary key type rather than inherit the project's.
+# Django 6.0+ already defaults to BigAutoField, so the setting is explicit.
+DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
