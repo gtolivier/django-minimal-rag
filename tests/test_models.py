@@ -37,3 +37,18 @@ def test_document_stored_for_a_source_reads_back_its_fields_from_the_database() 
     assert stored.title == "Opening hours"
     assert stored.url == "https://example.com/faq/opening-hours"
     assert stored.language == "en"
+
+
+@pytest.mark.django_db
+def test_document_stored_without_a_language_reads_back_none() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language=None,
+    )
+
+    stored = Document.objects.get()
+
+    assert stored.language is None
