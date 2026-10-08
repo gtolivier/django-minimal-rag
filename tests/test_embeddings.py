@@ -80,6 +80,12 @@ def test_fake_embeddings_of_two_different_texts_of_the_same_length_differ() -> N
     assert first != second
 
 
+def test_fake_embeddings_of_two_anagrams_differ() -> None:
+    first, second = FakeEmbeddings().embed(["a text", "t axte"])
+
+    assert first != second
+
+
 def test_fake_embeddings_returns_one_vector_per_text_in_the_texts_order() -> None:
     embeddings = FakeEmbeddings()
     [short_vector] = embeddings.embed(["a"])
