@@ -144,24 +144,40 @@ implements.
   model, through a backend it names in a setting; the package ships no
   model of its own, and nothing in it assumes a given provider or vector
   dimension.
+- **Storage.** Three models: `Source` (unique `source_key`) → `Document`
+  (`title`, `url`, `language`, `permissions`) → `Chunk` (`rank`, `text`,
+  `embedding_model`, `embedding`), each deleted with its parent. The
+  vector column has no fixed dimension, and each chunk stores the name of
+  the model that embedded it, so a project chooses its dimension without
+  generating a migration of its own; an HNSW index, which needs a fixed
+  dimension, will be a partial expression index per model, added with
+  retrieval. Permissions are an `ArrayField` of names, so host projects
+  install `django.contrib.postgres`. `title`, `url` and `language` are
+  unbounded text; `source_key` is at most 500 characters, which keeps it
+  within what a PostgreSQL unique index accepts. The app's primary keys
+  are `BigAutoField`, set by its `AppConfig`. Its migration creates the
+  pgvector extension if missing and never drops it on rollback.
 
 ## Open questions
 
 Each one is settled before the feature that needs its answer.
 
-- **Unknown language:** what a document's `language` of `None` means —
-  falling back on `LANGUAGE_CODE` or not.
+- **Language:** what a document's `language` of `None` means — falling
+  back on `LANGUAGE_CODE` or not — and how languages are compared. Storage
+  keeps the producer's tag as it is, unbounded; but Django writes `fr-fr`
+  where BCP 47's canonical form is `fr-FR`, and some tags carry a script
+  (`zh-hans`, `sr-latn`) rather than a region. The feature that first reads
+  `language` decides its canonical form and where it is normalized.
 - **Citations:** how a document without a URL is cited. django-model-rag
   gives an empty `url` (`""`) to a model with no URL source, and the
   Protocol's `url: str` accepts it, so either indexing rejects an empty
   `url` at runtime — and such documents cannot be indexed — or a citation
   falls back on something else, such as the title or the `source_key`.
 - **Embeddings:** the shape of the setting naming the embedding backend
-  (`{"BACKEND": "…", "OPTIONS": {…}}`, as for the output?), how storage
-  handles a dimension the project chooses — a vector column without a
-  fixed dimension, or one fixed by a migration the project generates —
-  needed before feature 3, and what changing models means for stored
-  vectors (storing the model's name with each vector, for instance).
+  (`{"BACKEND": "…", "OPTIONS": {…}}`, as for the output?), and what
+  changing models means for vectors already stored — re-embedding them, or
+  searching only those of the current model (see "Storage", under
+  "Decisions").
 - **Permission filtering:** documents carry permission names
   (`app_label.codename`). What they mean — all of them required, an empty
   set readable by everyone, as django-model-rag's example
@@ -195,12 +211,22 @@ Provisional: the design pass may reorder, split or merge them.
   bench, without django-model-rag.
 - [x] **2. Chunking.** A document's text split into chunks, each knowing
   its rank within its group.
-- [ ] **3. Storage.** Models for sources and chunks, with their
+- [x] **3. Storage.** Models for sources and chunks, with their
   permissions, their vector field and its migration.
 - [ ] **4. Embeddings.** The embedding backend, chosen by a setting, with a
   fake backend for tests.
 - [ ] **5. `replace()`.** Groups replaced in a transaction; empty groups
-  removed; unchanged texts not re-embedded.
+  removed; unchanged texts not re-embedded. Two points left open by
+  feature 3's review:
+  - a protocol document's `permissions` is an `AbstractSet[str]`, which
+    psycopg cannot store in the `ArrayField` as it is (a `frozenset` raises
+    `ProgrammingError`): `replace()` converts it, and a test passes a
+    `frozenset`;
+  - nothing in the database keeps a document's chunks from being stored
+    twice, by a retried or repeated write. Decide whether a constraint
+    enforces it, and on what — chunks are identified by their text within
+    their group, not by their rank — or whether the transaction that
+    replaces whole groups is enough.
 - [ ] **6. `prune()`.** Sources of a model that are not kept are removed.
 - [ ] **7. Retrieval.** The nearest chunks to a question that the user
   may read, within the relevance threshold. Permission filtering is part of

@@ -3,13 +3,20 @@
 The database is PostgreSQL (with pgvector). Its connection defaults to the
 database compose.yaml starts, so that a plain `uv run pytest` reaches it;
 the libpq environment variables (PGHOST, PGPORT, PGUSER, PGPASSWORD)
-override them. The package's app is added with the first models.
+override them. The package's app is installed, so its models get tables in
+the test database.
 """
 
 import os
 
 SECRET_KEY = "tests-only-not-secret"
-INSTALLED_APPS: list[str] = []
+# django.contrib.postgres is a requirement of the package for host projects:
+# its models use PostgreSQL array fields, which need it installed.
+INSTALLED_APPS = ["django.contrib.postgres", "django_minimal_rag"]
+# Plays a host project that still uses AutoField (an older project): the app
+# must choose its own primary key type rather than inherit the project's.
+# Django 6.0+ already defaults to BigAutoField, so the setting is explicit.
+DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",

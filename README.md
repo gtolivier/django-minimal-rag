@@ -18,7 +18,8 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Only the document Protocol and chunking exist so far: see
+Pre-alpha. Only the document Protocol, chunking and the storage models
+exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -58,12 +59,51 @@ than a chunk exceeding the limit. Whitespace never reaches a chunk unless it
 fits, so it never raises. `length` is expected to grow with the text, as
 `len` and token counts do.
 
+## Storage
+
+The app's models hold what gets indexed:
+
+- `Source` — one group of documents, identified by its unique
+  `source_key` (at most 500 characters: PostgreSQL cannot index much
+  longer unique values);
+- `Document` — a document of a source: its `title`, `url` and `language`
+  (unbounded text, the language tag stored as given, `None` when unknown)
+  and `permissions` (a list of permission names, empty by default);
+- `Chunk` — a chunk of a document: its `rank`, `text`, the name of the
+  `embedding_model` that produced its `embedding`, and that embedding.
+
+The embedding column has no fixed dimension, so vectors of different
+models, and of different dimensions, are stored side by side; each chunk
+records which model produced it. Deleting a source deletes its documents,
+and deleting a document deletes its chunks. Primary keys are
+`BigAutoField`, whatever the project's `DEFAULT_AUTO_FIELD`. `str()` of a
+document is its title, and of a chunk its text, cut to 80 characters with
+a trailing `…`.
+
+The app's migration creates the pgvector extension when the database does
+not have it yet, which needs a database role allowed to create it. With a
+role that is not, have a database administrator run `CREATE EXTENSION
+vector` first: the migration then leaves it as it is. Rolling the app's
+migrations back leaves the extension installed, since other apps may use
+it.
+
 ## Requirements
 
 - Python 3.11+
 - Django 5.2 LTS, 6.0 or 6.1
 - PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector)
   extension
+- `django.contrib.postgres` in `INSTALLED_APPS`, next to the app: its
+  models use PostgreSQL array fields, which Django 6.0 and later refuse to
+  use without it (system check `postgres.E005`):
+
+  ```python
+  INSTALLED_APPS = [
+      # ...
+      "django.contrib.postgres",
+      "django_minimal_rag",
+  ]
+  ```
 
 ## Development
 
