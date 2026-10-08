@@ -235,6 +235,19 @@ def test_get_embeddings_builds_a_new_backend_from_the_setting_on_every_call(
     assert second.model == "fake-3"
 
 
+def test_get_embeddings_with_an_unchanged_setting_builds_two_distinct_backends(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": FAKE_EMBEDDINGS_BACKEND,
+    }
+    first = get_embeddings()
+
+    second = get_embeddings()
+
+    assert second is not first
+
+
 def test_get_embeddings_without_the_setting_raises_improperly_configured(
     settings: "Settings",
 ) -> None:
