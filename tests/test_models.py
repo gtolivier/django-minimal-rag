@@ -1,7 +1,7 @@
 import pytest
 from django.db import IntegrityError
 
-from django_minimal_rag.models import Document, Source
+from django_minimal_rag.models import Chunk, Document, Source
 
 
 @pytest.mark.django_db
@@ -139,3 +139,29 @@ def test_deleting_a_source_deletes_its_documents() -> None:
     source.delete()
 
     assert not Document.objects.exists()
+
+
+@pytest.mark.django_db
+def test_chunk_stored_for_a_document_reads_back_its_fields_from_the_database() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    document = Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+    Chunk.objects.create(
+        document=document,
+        rank=2,
+        text="The shop opens at 9 am.",
+        embedding_model="text-embedding-3-small",
+        embedding=[0.5, -1.0, 0.25],
+    )
+
+    stored = Chunk.objects.get()
+
+    assert stored.document == document
+    assert stored.rank == 2
+    assert stored.text == "The shop opens at 9 am."
+    assert stored.embedding_model == "text-embedding-3-small"
+    assert list(stored.embedding) == [0.5, -1.0, 0.25]
