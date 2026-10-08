@@ -4,6 +4,21 @@ from django.db import IntegrityError
 from django_minimal_rag.models import Chunk, Document, Source
 
 
+@pytest.fixture
+def source() -> Source:
+    return Source.objects.create(source_key="faq:opening-hours")
+
+
+@pytest.fixture
+def document(source: Source) -> Document:
+    return Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+
+
 @pytest.mark.django_db
 def test_source_stored_with_a_source_key_reads_it_back_from_the_database() -> None:
     Source.objects.create(source_key="faq:opening-hours")
@@ -22,8 +37,9 @@ def test_second_source_with_the_same_source_key_cannot_be_stored() -> None:
 
 
 @pytest.mark.django_db
-def test_document_stored_for_a_source_reads_back_its_fields_from_the_database() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
+def test_document_stored_for_a_source_reads_back_its_fields_from_the_database(
+    source: Source,
+) -> None:
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -40,8 +56,7 @@ def test_document_stored_for_a_source_reads_back_its_fields_from_the_database() 
 
 
 @pytest.mark.django_db
-def test_document_stored_without_a_language_reads_back_none() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
+def test_document_stored_without_a_language_reads_back_none(source: Source) -> None:
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -55,10 +70,11 @@ def test_document_stored_without_a_language_reads_back_none() -> None:
 
 
 @pytest.mark.django_db
-def test_document_with_a_2000_character_title_reads_back_the_whole_title() -> None:
+def test_document_with_a_2000_character_title_reads_back_the_whole_title(
+    source: Source,
+) -> None:
     long_title = ("Opening hours " * 143)[:2000]
     assert len(long_title) == 2000
-    source = Source.objects.create(source_key="faq:opening-hours")
     Document.objects.create(
         source=source,
         title=long_title,
@@ -72,10 +88,11 @@ def test_document_with_a_2000_character_title_reads_back_the_whole_title() -> No
 
 
 @pytest.mark.django_db
-def test_document_with_a_10000_character_title_reads_back_the_whole_title() -> None:
+def test_document_with_a_10000_character_title_reads_back_the_whole_title(
+    source: Source,
+) -> None:
     long_title = ("Opening hours " * 715)[:10000]
     assert len(long_title) == 10000
-    source = Source.objects.create(source_key="faq:opening-hours")
     Document.objects.create(
         source=source,
         title=long_title,
@@ -89,11 +106,12 @@ def test_document_with_a_10000_character_title_reads_back_the_whole_title() -> N
 
 
 @pytest.mark.django_db
-def test_document_with_a_2000_character_url_reads_back_the_whole_url() -> None:
+def test_document_with_a_2000_character_url_reads_back_the_whole_url(
+    source: Source,
+) -> None:
     base_url = "https://example.com/faq/opening-hours?q="
     long_url = base_url + "a" * (2000 - len(base_url))
     assert len(long_url) == 2000
-    source = Source.objects.create(source_key="faq:opening-hours")
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -107,11 +125,12 @@ def test_document_with_a_2000_character_url_reads_back_the_whole_url() -> None:
 
 
 @pytest.mark.django_db
-def test_document_with_a_10000_character_url_reads_back_the_whole_url() -> None:
+def test_document_with_a_10000_character_url_reads_back_the_whole_url(
+    source: Source,
+) -> None:
     base_url = "https://example.com/faq/opening-hours?q="
     long_url = base_url + "a" * (10000 - len(base_url))
     assert len(long_url) == 10000
-    source = Source.objects.create(source_key="faq:opening-hours")
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -125,8 +144,9 @@ def test_document_with_a_10000_character_url_reads_back_the_whole_url() -> None:
 
 
 @pytest.mark.django_db
-def test_document_stored_with_permissions_reads_back_the_same_names() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
+def test_document_stored_with_permissions_reads_back_the_same_names(
+    source: Source,
+) -> None:
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -141,8 +161,9 @@ def test_document_stored_with_permissions_reads_back_the_same_names() -> None:
 
 
 @pytest.mark.django_db
-def test_document_stored_without_permissions_reads_back_no_permissions() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
+def test_document_stored_without_permissions_reads_back_no_permissions(
+    source: Source,
+) -> None:
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -156,8 +177,7 @@ def test_document_stored_without_permissions_reads_back_no_permissions() -> None
 
 
 @pytest.mark.django_db
-def test_deleting_a_source_deletes_its_documents() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
+def test_deleting_a_source_deletes_its_documents(source: Source) -> None:
     Document.objects.create(
         source=source,
         title="Opening hours",
@@ -177,14 +197,9 @@ def test_deleting_a_source_deletes_its_documents() -> None:
 
 
 @pytest.mark.django_db
-def test_chunk_stored_for_a_document_reads_back_its_fields_from_the_database() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
-    document = Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+def test_chunk_stored_for_a_document_reads_back_its_fields_from_the_database(
+    document: Document,
+) -> None:
     Chunk.objects.create(
         document=document,
         rank=2,
@@ -203,16 +218,9 @@ def test_chunk_stored_for_a_document_reads_back_its_fields_from_the_database() -
 
 
 @pytest.mark.django_db
-def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side() -> (
-    None
-):
-    source = Source.objects.create(source_key="faq:opening-hours")
-    document = Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side(
+    document: Document,
+) -> None:
     Chunk.objects.create(
         document=document,
         rank=0,
@@ -236,15 +244,7 @@ def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side(
 
 
 @pytest.mark.django_db
-def test_chunk_without_an_embedding_cannot_be_stored() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
-    document = Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
-
+def test_chunk_without_an_embedding_cannot_be_stored(document: Document) -> None:
     with pytest.raises(IntegrityError):
         Chunk.objects.create(
             document=document,
@@ -255,14 +255,7 @@ def test_chunk_without_an_embedding_cannot_be_stored() -> None:
 
 
 @pytest.mark.django_db
-def test_deleting_a_document_deletes_its_chunks() -> None:
-    source = Source.objects.create(source_key="faq:opening-hours")
-    document = Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+def test_deleting_a_document_deletes_its_chunks(document: Document) -> None:
     Chunk.objects.create(
         document=document,
         rank=0,
