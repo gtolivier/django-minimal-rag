@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 from django_minimal_rag.embeddings import FakeEmbeddings
 
 EMBED_A_TEXT_IN_A_CHILD_PROCESS = (
@@ -77,3 +79,8 @@ def test_fake_embeddings_of_the_same_text_are_equal_in_other_processes() -> None
 
     assert embed_a_text_in_a_child_process(hash_seed="1") == vector
     assert embed_a_text_in_a_child_process(hash_seed="2") == vector
+
+
+def test_fake_embeddings_with_zero_dimensions_raise_value_error() -> None:
+    with pytest.raises(ValueError):
+        FakeEmbeddings(dimensions=0)
