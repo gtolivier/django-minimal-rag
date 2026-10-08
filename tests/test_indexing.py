@@ -31,3 +31,12 @@ def test_replace_group_of_one_document_creates_source_with_group_key() -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
 
     assert list(Source.objects.values_list("source_key", flat=True)) == ["faq:1"]
+
+
+@pytest.mark.django_db
+def test_replace_group_of_one_document_stores_it_under_the_group_source() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    assert list(
+        Document.objects.values_list("source__source_key", "title", "url", "language")
+    ) == [("faq:1", "Question 1", "https://example.com/faq/1/", "en")]
