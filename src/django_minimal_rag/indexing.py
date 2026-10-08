@@ -16,13 +16,25 @@ class Indexer:
         """Replace the indexed content with the given groups."""
         embeddings = get_embeddings()
         for source_key, documents in groups.items():
-            if not documents:
-                Source.objects.filter(source_key=source_key).delete()
-                continue
-            source, _ = Source.objects.get_or_create(source_key=source_key)
-            source.document_set.all().delete()
-            stored_documents = _store_documents(source, documents)
-            _store_chunks(chunk_group(documents), stored_documents, embeddings)
+            if documents:
+                _replace_source(source_key, documents, embeddings)
+            else:
+                _remove_source(source_key)
+
+
+def _replace_source(
+    source_key: str, documents: Sequence[DocumentProtocol], embeddings: Embeddings
+) -> None:
+    """Store ``documents`` as the only content of the source ``source_key``."""
+    source, _ = Source.objects.get_or_create(source_key=source_key)
+    source.document_set.all().delete()
+    stored_documents = _store_documents(source, documents)
+    _store_chunks(chunk_group(documents), stored_documents, embeddings)
+
+
+def _remove_source(source_key: str) -> None:
+    """Remove the source stored under ``source_key``, with its content."""
+    Source.objects.filter(source_key=source_key).delete()
 
 
 def _store_documents(
