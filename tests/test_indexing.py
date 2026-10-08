@@ -57,6 +57,14 @@ def use_call_recording_embeddings(settings: "Settings") -> list[list[str]]:
     return calls
 
 
+def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
+    """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
+        "OPTIONS": {"vector_count": vector_count},
+    }
+
+
 def faq_entry(number: int) -> SampleDocument:
     """FAQ entry ``number`` of the host project, in English and public."""
     return SampleDocument(
@@ -537,10 +545,7 @@ def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
 def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vectors(
     settings: "Settings",
 ) -> None:
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
-        "OPTIONS": {"vector_count": 1},
-    }
+    use_miscounting_embeddings(settings, vector_count=1)
     two_chunk_document = SampleDocument(
         text="\n\n".join(paragraphs_of_one_chunk_each(2)),
         source_key="guide:1",
@@ -563,10 +568,7 @@ def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vect
 def test_replace_raises_when_the_backend_returns_too_many_vectors(
     settings: "Settings",
 ) -> None:
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
-        "OPTIONS": {"vector_count": 3},
-    }
+    use_miscounting_embeddings(settings, vector_count=3)
 
     # Both counts, in any order and wording: 1 text, 3 vectors.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\b1\b)(?=.*\b3\b)"):
