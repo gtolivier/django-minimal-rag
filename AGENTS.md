@@ -41,7 +41,11 @@ for this repository:
   editing `pyproject.toml` by hand — a manual edit leaves `uv.lock` stale.
 - **Generated files:** when an official tool can produce a file
   (`django-admin startapp`, `manage.py makemigrations`, `uv init`…), use it
-  instead of writing the file.
+  instead of writing the file. One exception: `makemigrations` cannot emit
+  `pgvector.django.VectorExtension()`, so it is added by hand as the first
+  operation of the generated migration that creates the first vector
+  column, with a comment saying so. Keep it when migrations are
+  regenerated or squashed.
 - **Test-first:** every behavior in `src/` is introduced by a failing test.
 - **Clean code, enforced where a tool can:** ruff flags magic values in
   comparisons (numbers and strings, outside `tests/`), complexity, naming,

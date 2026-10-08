@@ -77,8 +77,10 @@ records which model produced it. Deleting a source deletes its documents,
 and deleting a document deletes its chunks. Primary keys are
 `BigAutoField`, whatever the project's `DEFAULT_AUTO_FIELD`.
 
-The app's migration creates the pgvector extension (`CREATE EXTENSION IF
-NOT EXISTS vector`), which needs a database role allowed to create it.
+The app's migration creates the pgvector extension when the database does
+not have it yet, which needs a database role allowed to create it. With a
+role that is not, have a database administrator run `CREATE EXTENSION
+vector` first: the migration then leaves it as it is.
 
 ## Requirements
 
@@ -86,8 +88,9 @@ NOT EXISTS vector`), which needs a database role allowed to create it.
 - Django 5.2 LTS, 6.0 or 6.1
 - PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector)
   extension
-- `django.contrib.postgres` in `INSTALLED_APPS`, next to the app — its
-  models use PostgreSQL array fields:
+- `django.contrib.postgres` in `INSTALLED_APPS`, next to the app: its
+  models use PostgreSQL array fields, which Django 6.0 and later refuse to
+  use without it (system check `postgres.E005`):
 
   ```python
   INSTALLED_APPS = [
