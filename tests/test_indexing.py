@@ -466,6 +466,20 @@ def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vect
     assert not Chunk.objects.exists()
 
 
+@pytest.mark.django_db
+def test_replace_raises_when_the_backend_returns_too_many_vectors(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
+        "OPTIONS": {"vector_count": 3},
+    }
+
+    # Both counts, in any order and wording: 1 text, 3 vectors.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\b1\b)(?=.*\b3\b)"):
+        Indexer().replace({"faq:1": [faq_entry(1)]})
+
+
 @pytest.mark.django_db(transaction=True)
 def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
     None
