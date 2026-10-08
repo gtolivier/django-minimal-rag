@@ -156,11 +156,23 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
 - A chunk whose text is already stored in its source, embedded by the
   current backend's model, keeps its vector: only new or changed texts,
   and texts embedded by another model, are sent to the backend.
+- The new texts of all groups are sent to the backend in a single
+  `embed()` call, each text once, however many groups or documents share
+  it. A call whose groups are all empty builds no backend, so it works
+  without `MINIMAL_RAG_EMBEDDINGS`.
 - A call is one transaction, embedding included: if the backend raises,
   the exception propagates and nothing of the call is stored. The row of
   each replaced source is locked (`SELECT … FOR UPDATE`) until the
   transaction ends, so two calls replacing the same source run one after
-  the other instead of interleaving their documents.
+  the other instead of interleaving their documents. The rows are locked
+  in sorted `source_key` order, so two calls sharing several sources do
+  not deadlock, whatever the order of their `groups`.
+- `ValueError` is raised, and nothing of the call is stored, when a
+  document's `source_key` differs from the key of its group (the message
+  names both keys), and when the backend returns another number of vectors
+  than it was given texts (the message gives both counts).
+- Each group is iterated once, so a sequence that yields its items only
+  the first time is stored whole; documents need not be hashable.
 
 `replace()` is the first half of django-model-rag's output Protocol;
 `prune()`, the other half, is a feature to come.

@@ -126,7 +126,10 @@ implements.
   same source, from two quick saves, run one after the other. No
   uniqueness constraint covers chunks: a concurrent call would duplicate
   whole documents, which a constraint on chunks would not catch, and
-  identical paragraphs may legitimately repeat within a group.
+  identical paragraphs may legitimately repeat within a group. The rows
+  are locked in sorted `source_key` order, whatever the order of the
+  `groups` mapping, so two calls sharing several sources wait for each
+  other instead of deadlocking.
 - **Answers come from the retrieved chunks only.** Chunks too far from the
   question — past a relevance threshold — are discarded before the LLM is
   called; with none left, there
@@ -210,10 +213,6 @@ Each one is settled before the feature that needs its answer.
   retrying a rate-limited API there holds the source locks for as long as
   it waits. Whether retries stay inside, or embedding moves before the
   transaction (re-checking what changed once the locks are taken).
-- **Lock ordering:** `replace()` locks sources in the order of its
-  `groups` mapping, so two calls sharing several sources in different
-  orders can deadlock (PostgreSQL then aborts one). Whether to lock them
-  in sorted `source_key` order.
 - **Orphaned chunks:** `replace()` and `prune()` remove what their producer
   reports, but the chunks of a source no producer reports any more — a
   model no longer registered, a producer that never prunes — stay
