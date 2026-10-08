@@ -78,6 +78,26 @@ def test_replace_stores_each_group_under_its_own_source() -> None:
 
 
 @pytest.mark.django_db
+def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    source_pk = Source.objects.get().pk
+
+    Indexer().replace({"faq:1": [faq_entry(2), faq_entry(3)]})
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (source_pk, "faq:1")
+    ]
+    assert sorted(Document.objects.values_list("source", "title")) == [
+        (source_pk, "Question 2"),
+        (source_pk, "Question 3"),
+    ]
+    assert sorted(Chunk.objects.values_list("document__title", "text")) == [
+        ("Question 2", "Answer to question 2."),
+        ("Question 3", "Answer to question 3."),
+    ]
+
+
+@pytest.mark.django_db
 def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> None:
     document = SampleDocument(
         text="Answer to question 1.",
