@@ -58,14 +58,6 @@ def get_embeddings() -> Embeddings:
     return backend(**_options(config))
 
 
-def _options(config: Mapping[str, Any]) -> Mapping[str, Any]:
-    options: object = config.get(OPTIONS_KEY, {})
-    if not isinstance(options, Mapping):
-        msg = f"The {OPTIONS_KEY} of {EMBEDDINGS_SETTING} must be a mapping."
-        raise ImproperlyConfigured(msg)
-    return options
-
-
 def _embeddings_config() -> Mapping[str, Any]:
     try:
         config: object = getattr(settings, EMBEDDINGS_SETTING)
@@ -94,3 +86,11 @@ def _import_backend(backend_path: str) -> type[Embeddings]:
         msg = f"Cannot import the embeddings backend {backend_path!r}: {error}"
         raise ImproperlyConfigured(msg) from error
     return backend
+
+
+def _options(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    options: object = config.get(OPTIONS_KEY, {})
+    if not isinstance(options, Mapping):
+        msg = f"The {OPTIONS_KEY} of {EMBEDDINGS_SETTING} must be a mapping."
+        raise ImproperlyConfigured(msg)
+    return options
