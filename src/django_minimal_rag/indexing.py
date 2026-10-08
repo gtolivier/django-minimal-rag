@@ -45,6 +45,16 @@ def _prepare_source(
     Return the pieces to chunk and the vectors already stored for the source.
     """
     documents = list(documents)  # a group may be iterable only once
+    _check_source_keys(source_key, documents)
+    source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
+    stored_vectors = _stored_vectors(source, embeddings.model)
+    source.document_set.all().delete()
+    stored_documents = _store_documents(source, documents)
+    return _Plan(_split_documents(documents, stored_documents), stored_vectors)
+
+
+def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -> None:
+    """Raise ``ValueError`` if one of ``documents`` is not of ``source_key``."""
     for document in documents:
         if document.source_key != source_key:
             message = (
@@ -52,11 +62,6 @@ def _prepare_source(
                 f"found in the group {source_key!r}"
             )
             raise ValueError(message)
-    source, _ = Source.objects.select_for_update().get_or_create(source_key=source_key)
-    stored_vectors = _stored_vectors(source, embeddings.model)
-    source.document_set.all().delete()
-    stored_documents = _store_documents(source, documents)
-    return _Plan(_split_documents(documents, stored_documents), stored_vectors)
 
 
 def _remove_source(source_key: str) -> None:
