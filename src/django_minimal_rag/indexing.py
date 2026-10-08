@@ -124,15 +124,17 @@ def _vectors(plans: Sequence[_Plan], embeddings: Embeddings) -> list[Any]:
 
     A text already embedded by the same model keeps its vector.
     """
-    new_texts = [
-        text
-        for plan in plans
-        for _, text in plan.pieces
-        if text not in plan.stored_vectors
-    ]
-    new_vectors = iter(_embed(new_texts, embeddings))
+    new_texts = list(
+        dict.fromkeys(
+            text
+            for plan in plans
+            for _, text in plan.pieces
+            if text not in plan.stored_vectors
+        )
+    )
+    new_vectors = dict(zip(new_texts, _embed(new_texts, embeddings), strict=True))
     return [
-        plan.stored_vectors[text] if text in plan.stored_vectors else next(new_vectors)
+        plan.stored_vectors[text] if text in plan.stored_vectors else new_vectors[text]
         for plan in plans
         for _, text in plan.pieces
     ]
