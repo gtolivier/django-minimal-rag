@@ -187,6 +187,15 @@ def test_pieces_of_a_split_line_are_not_merged_with_its_neighbour_lines() -> Non
     ]
 
 
+def test_no_piece_of_a_split_paragraph_keeps_the_spaces_around_its_lines() -> None:
+    # Trailing spaces before the line break, leading spaces after it.
+    text = "a   \n   b c d e"
+    max_length = 6
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == ["a", "b c d", "e"]
+
+
 def test_word_longer_than_max_length_is_cut_into_pieces_of_max_length() -> None:
     text = "abcdefghij"
     max_length = 4
