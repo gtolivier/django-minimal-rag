@@ -1,7 +1,48 @@
+from collections.abc import Sequence
+from typing import Any
+
 import pytest
 from django.db import DataError, IntegrityError
 
 from django_minimal_rag.models import Chunk, Document, Source
+
+
+def padded_to_length(start: str, length: int) -> str:
+    return start + "a" * (length - len(start))
+
+
+def repeated_to_length(phrase: str, length: int) -> str:
+    return (phrase * (length // len(phrase) + 1))[:length]
+
+
+def create_document(
+    source: Source,
+    *,
+    title: str = "Opening hours",
+    url: str = "https://example.com/faq/opening-hours",
+    language: str | None = "en",
+    **other_fields: Any,
+) -> Document:
+    return Document.objects.create(
+        source=source, title=title, url=url, language=language, **other_fields
+    )
+
+
+def create_chunk(
+    document: Document,
+    *,
+    rank: int = 0,
+    text: str = "The shop opens at 9 am.",
+    embedding_model: str = "text-embedding-3-small",
+    embedding: Sequence[float] = (0.5, -1.0, 0.25),
+) -> Chunk:
+    return Chunk.objects.create(
+        document=document,
+        rank=rank,
+        text=text,
+        embedding_model=embedding_model,
+        embedding=list(embedding),
+    )
 
 
 @pytest.fixture
@@ -11,12 +52,7 @@ def source() -> Source:
 
 @pytest.fixture
 def document(source: Source) -> Document:
-    return Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+    return create_document(source)
 
 
 @pytest.mark.django_db
@@ -30,8 +66,7 @@ def test_source_stored_with_a_source_key_reads_it_back_from_the_database() -> No
 
 @pytest.mark.django_db
 def test_source_with_a_500_character_source_key_reads_back_the_whole_key() -> None:
-    base_key = "faq:opening-hours:"
-    long_key = base_key + "a" * (500 - len(base_key))
+    long_key = padded_to_length("faq:opening-hours:", 500)
     assert len(long_key) == 500
     Source.objects.create(source_key=long_key)
 
@@ -42,8 +77,7 @@ def test_source_with_a_500_character_source_key_reads_back_the_whole_key() -> No
 
 @pytest.mark.django_db
 def test_source_with_a_501_character_source_key_cannot_be_stored() -> None:
-    base_key = "faq:opening-hours:"
-    too_long_key = base_key + "a" * (501 - len(base_key))
+    too_long_key = padded_to_length("faq:opening-hours:", 501)
     assert len(too_long_key) == 501
 
     with pytest.raises(DataError):
@@ -79,12 +113,7 @@ def test_document_stored_for_a_source_reads_back_its_fields_from_the_database(
 
 @pytest.mark.django_db
 def test_document_stored_without_a_language_reads_back_none(source: Source) -> None:
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language=None,
-    )
+    create_document(source, language=None)
 
     stored = Document.objects.get()
 
@@ -97,12 +126,7 @@ def test_document_with_a_19_character_language_tag_reads_back_the_whole_tag(
 ) -> None:
     long_tag = "sl-rozaj-biske-1994"
     assert len(long_tag) == 19
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language=long_tag,
-    )
+    create_document(source, language=long_tag)
 
     stored = Document.objects.get()
 
@@ -117,12 +141,7 @@ def test_document_with_a_300_character_language_tag_reads_back_the_whole_tag(
     # valid BCP 47 however long it grows.
     long_tag = "en-x-" + "-".join(["abcdefgh"] * 32) + "-abcdefg"
     assert len(long_tag) == 300
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language=long_tag,
-    )
+    create_document(source, language=long_tag)
 
     stored = Document.objects.get()
 
@@ -133,14 +152,9 @@ def test_document_with_a_300_character_language_tag_reads_back_the_whole_tag(
 def test_document_with_a_2000_character_title_reads_back_the_whole_title(
     source: Source,
 ) -> None:
-    long_title = ("Opening hours " * 143)[:2000]
+    long_title = repeated_to_length("Opening hours ", 2000)
     assert len(long_title) == 2000
-    Document.objects.create(
-        source=source,
-        title=long_title,
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+    create_document(source, title=long_title)
 
     stored = Document.objects.get()
 
@@ -151,14 +165,9 @@ def test_document_with_a_2000_character_title_reads_back_the_whole_title(
 def test_document_with_a_10000_character_title_reads_back_the_whole_title(
     source: Source,
 ) -> None:
-    long_title = ("Opening hours " * 715)[:10000]
+    long_title = repeated_to_length("Opening hours ", 10000)
     assert len(long_title) == 10000
-    Document.objects.create(
-        source=source,
-        title=long_title,
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+    create_document(source, title=long_title)
 
     stored = Document.objects.get()
 
@@ -169,15 +178,9 @@ def test_document_with_a_10000_character_title_reads_back_the_whole_title(
 def test_document_with_a_2000_character_url_reads_back_the_whole_url(
     source: Source,
 ) -> None:
-    base_url = "https://example.com/faq/opening-hours?q="
-    long_url = base_url + "a" * (2000 - len(base_url))
+    long_url = padded_to_length("https://example.com/faq/opening-hours?q=", 2000)
     assert len(long_url) == 2000
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url=long_url,
-        language="en",
-    )
+    create_document(source, url=long_url)
 
     stored = Document.objects.get()
 
@@ -188,15 +191,9 @@ def test_document_with_a_2000_character_url_reads_back_the_whole_url(
 def test_document_with_a_10000_character_url_reads_back_the_whole_url(
     source: Source,
 ) -> None:
-    base_url = "https://example.com/faq/opening-hours?q="
-    long_url = base_url + "a" * (10000 - len(base_url))
+    long_url = padded_to_length("https://example.com/faq/opening-hours?q=", 10000)
     assert len(long_url) == 10000
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url=long_url,
-        language="en",
-    )
+    create_document(source, url=long_url)
 
     stored = Document.objects.get()
 
@@ -207,14 +204,9 @@ def test_document_with_a_10000_character_url_reads_back_the_whole_url(
 def test_str_of_a_document_with_an_80_character_title_is_its_title(
     source: Source,
 ) -> None:
-    title = ("Opening hours " * 6)[:80]
+    title = repeated_to_length("Opening hours ", 80)
     assert len(title) == 80
-    document = Document.objects.create(
-        source=source,
-        title=title,
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+    document = create_document(source, title=title)
 
     assert str(document) == title
 
@@ -225,15 +217,10 @@ def test_str_of_a_document_with_an_81_character_title_is_cut_to_79_plus_ellipsis
 ) -> None:
     # Characters 79, 80 and 81 are "X", "Y" and "Z", so the cut shows exactly
     # where it falls: "X" is kept, "Y" and "Z" are replaced by the ellipsis.
-    prefix = ("Opening hours " * 6)[:78]
+    prefix = repeated_to_length("Opening hours ", 78)
     title = prefix + "XYZ"
     assert len(title) == 81
-    document = Document.objects.create(
-        source=source,
-        title=title,
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+    document = create_document(source, title=title)
 
     expected = prefix + "X…"
     assert len(expected) == 80
@@ -244,13 +231,7 @@ def test_str_of_a_document_with_an_81_character_title_is_cut_to_79_plus_ellipsis
 def test_document_stored_with_permissions_reads_back_the_same_names(
     source: Source,
 ) -> None:
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-        permissions=["app.view_note", "app.change_note"],
-    )
+    create_document(source, permissions=["app.view_note", "app.change_note"])
 
     stored = Document.objects.get()
 
@@ -261,12 +242,7 @@ def test_document_stored_with_permissions_reads_back_the_same_names(
 def test_document_stored_without_permissions_reads_back_no_permissions(
     source: Source,
 ) -> None:
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
+    create_document(source)
 
     stored = Document.objects.get()
 
@@ -275,17 +251,9 @@ def test_document_stored_without_permissions_reads_back_no_permissions(
 
 @pytest.mark.django_db
 def test_deleting_a_source_deletes_its_documents(source: Source) -> None:
-    Document.objects.create(
-        source=source,
-        title="Opening hours",
-        url="https://example.com/faq/opening-hours",
-        language="en",
-    )
-    Document.objects.create(
-        source=source,
-        title="Holiday hours",
-        url="https://example.com/faq/holiday-hours",
-        language="en",
+    create_document(source)
+    create_document(
+        source, title="Holiday hours", url="https://example.com/faq/holiday-hours"
     )
 
     source.delete()
@@ -318,17 +286,9 @@ def test_chunk_stored_for_a_document_reads_back_its_fields_from_the_database(
 def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side(
     document: Document,
 ) -> None:
-    Chunk.objects.create(
-        document=document,
-        rank=0,
-        text="The shop opens at 9 am.",
-        embedding_model="small-model",
-        embedding=[0.5, -1.0, 0.25],
-    )
-    Chunk.objects.create(
-        document=document,
-        rank=0,
-        text="The shop opens at 9 am.",
+    create_chunk(document, embedding_model="small-model", embedding=[0.5, -1.0, 0.25])
+    create_chunk(
+        document,
         embedding_model="large-model",
         embedding=[0.5, -1.0, 0.25, 2.0, -0.125],
     )
@@ -355,15 +315,9 @@ def test_chunk_without_an_embedding_cannot_be_stored(document: Document) -> None
 def test_str_of_a_chunk_with_an_80_character_text_is_its_text(
     document: Document,
 ) -> None:
-    text = ("The shop opens at 9 am. " * 4)[:80]
+    text = repeated_to_length("The shop opens at 9 am. ", 80)
     assert len(text) == 80
-    chunk = Chunk.objects.create(
-        document=document,
-        rank=0,
-        text=text,
-        embedding_model="text-embedding-3-small",
-        embedding=[0.5, -1.0, 0.25],
-    )
+    chunk = create_chunk(document, text=text)
 
     assert str(chunk) == text
 
@@ -374,16 +328,10 @@ def test_str_of_a_chunk_with_an_81_character_text_is_cut_to_79_plus_ellipsis(
 ) -> None:
     # Characters 79, 80 and 81 are "X", "Y" and "Z", so the cut shows exactly
     # where it falls: "X" is kept, "Y" and "Z" are replaced by the ellipsis.
-    prefix = ("The shop opens at 9 am. " * 4)[:78]
+    prefix = repeated_to_length("The shop opens at 9 am. ", 78)
     text = prefix + "XYZ"
     assert len(text) == 81
-    chunk = Chunk.objects.create(
-        document=document,
-        rank=0,
-        text=text,
-        embedding_model="text-embedding-3-small",
-        embedding=[0.5, -1.0, 0.25],
-    )
+    chunk = create_chunk(document, text=text)
 
     expected = prefix + "X…"
     assert len(expected) == 80
@@ -392,19 +340,9 @@ def test_str_of_a_chunk_with_an_81_character_text_is_cut_to_79_plus_ellipsis(
 
 @pytest.mark.django_db
 def test_deleting_a_document_deletes_its_chunks(document: Document) -> None:
-    Chunk.objects.create(
-        document=document,
-        rank=0,
-        text="The shop opens at 9 am.",
-        embedding_model="text-embedding-3-small",
-        embedding=[0.5, -1.0, 0.25],
-    )
-    Chunk.objects.create(
-        document=document,
-        rank=1,
-        text="The shop closes at 6 pm.",
-        embedding_model="text-embedding-3-small",
-        embedding=[0.25, 0.5, -1.0],
+    create_chunk(document)
+    create_chunk(
+        document, rank=1, text="The shop closes at 6 pm.", embedding=[0.25, 0.5, -1.0]
     )
 
     document.delete()
