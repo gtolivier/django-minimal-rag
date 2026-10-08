@@ -294,3 +294,26 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
         "Answer to question 3.",
         "New answer to question 2.",
     ]
+
+
+@pytest.mark.django_db
+def test_replace_re_embeds_a_text_stored_under_another_model(
+    settings: "Settings",
+) -> None:
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+    embedded: list[str] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.RecordingEmbeddings",
+        "OPTIONS": {"embedded": embedded},
+    }
+
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+
+    assert sorted(embedded) == ["Answer to question 1.", "Answer to question 2."]
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded)
+    }
