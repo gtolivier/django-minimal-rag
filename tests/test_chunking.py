@@ -110,6 +110,19 @@ def test_cr_followed_by_crlf_counts_as_two_line_endings_between_paragraphs() -> 
     assert split_text(text, max_length=MAX_LENGTH) == ["A.\n\nB."]
 
 
+def test_two_other_line_boundaries_in_a_row_separate_two_paragraphs() -> None:
+    # Two PARAGRAPH SEPARATOR characters: two line endings, so a blank line.
+    first = "A."
+    second = "B."
+    text = f"{first}\N{PARAGRAPH SEPARATOR}\N{PARAGRAPH SEPARATOR}{second}"
+    max_length = 3
+    assert len(first) <= max_length
+    assert len(second) <= max_length
+    assert len(text) > max_length
+
+    assert split_text(text, max_length=max_length) == [first, second]
+
+
 def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
     # Trailing spaces before each blank line, leading spaces or a tab after it.
     text = "First paragraph.  \n\n  Second paragraph. \t\n\n\tThird paragraph."
