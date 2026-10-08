@@ -5,7 +5,7 @@ from typing import Any
 
 from django.db import transaction
 
-from django_minimal_rag.chunking import chunk_group
+from django_minimal_rag.chunking import split_text
 from django_minimal_rag.documents import Document as DocumentProtocol
 from django_minimal_rag.embeddings import Embeddings, get_embeddings
 from django_minimal_rag.models import Chunk, Document, Source
@@ -33,11 +33,7 @@ def _replace_source(
     stored_vectors = _stored_vectors(source, embeddings.model)
     source.document_set.all().delete()
     stored_documents = _store_documents(source, documents)
-    pieces = [
-        (stored_document, chunk.text)
-        for document, stored_document in zip(documents, stored_documents, strict=True)
-        for chunk in chunk_group([document])
-    ]
+    pieces = _split_documents(documents, stored_documents)
     _store_chunks(pieces, embeddings, stored_vectors)
 
 
@@ -72,6 +68,21 @@ def _store_documents(
     )
 
 
+def _split_documents(
+    documents: Sequence[DocumentProtocol], stored_documents: Sequence[Document]
+) -> list[tuple[Document, str]]:
+    """Split each of ``documents`` into texts, each paired with its stored document.
+
+    ``stored_documents`` holds the stored document of each of ``documents``, in
+    order.
+    """
+    return [
+        (stored_document, text)
+        for document, stored_document in zip(documents, stored_documents, strict=True)
+        for text in split_text(document.text)
+    ]
+
+
 def _store_chunks(
     pieces: Sequence[tuple[Document, str]],
     embeddings: Embeddings,
@@ -101,9 +112,9 @@ def _vectors(
     embeddings: Embeddings,
     stored_vectors: Mapping[str, Any],
 ) -> list[Any]:
-    """Return one vector per chunk, embedding only the texts not yet stored.
+    """Return one vector per text of ``texts``, embedding only those not yet stored.
 
-    A chunk whose text was already embedded by the same model keeps its vector.
+    A text already embedded by the same model keeps its vector.
     """
     new_texts = [text for text in texts if text not in stored_vectors]
     new_vectors = iter(embeddings.embed(new_texts) if new_texts else [])
