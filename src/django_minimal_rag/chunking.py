@@ -179,8 +179,8 @@ def _longest_fitting_prefix(text: str, *, limit: _SizeLimit) -> str:
     """The longest prefix of ``text`` that fits ``limit``.
 
     The first character of ``text`` must fit ``limit``, as ``split_text``
-    checks every character does: the prefix is never empty, so cutting a word
-    always moves forward.
+    checks every non-whitespace character does: the prefix is never empty, so
+    cutting a word always moves forward.
 
     The search is bracketed first, so every measured prefix stays within twice
     the size of the result, however long ``text`` is.
