@@ -1,6 +1,15 @@
 """Models of the package."""
 
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
+
+# A permission name is "<app_label>.<codename>". The bounds mirror Django's own
+# columns, ContentType.app_label and Permission.codename (100 characters each);
+# they are restated rather than imported because importing those models would
+# require django.contrib.contenttypes and django.contrib.auth to be installed.
+APP_LABEL_MAX_LENGTH = 100
+CODENAME_MAX_LENGTH = 100
+PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENGTH
 
 
 class Source(models.Model):
@@ -19,7 +28,9 @@ class Document(models.Model):
     title = models.CharField(max_length=2000)
     url = models.URLField(max_length=2000)
     language = models.CharField(max_length=16, null=True)  # noqa: DJ001 - None means unknown language, distinct from ""
-    permissions = models.JSONField(default=list)
+    permissions = ArrayField(
+        models.CharField(max_length=PERMISSION_NAME_MAX_LENGTH), default=list
+    )
 
     def __str__(self) -> str:
         return self.title
