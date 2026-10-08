@@ -271,6 +271,21 @@ def test_character_measuring_more_than_max_length_raises_value_error() -> None:
         split_text("abc", max_length=max_length, length=count_one_more_than_characters)
 
 
+def count_tab_as_ten(text: str) -> int:
+    tab_size = 10
+    return len(text) + (tab_size - 1) * text.count("\t")
+
+
+def test_whitespace_character_measuring_more_than_max_length_does_not_raise() -> None:
+    text = "ab\tcd"
+    max_length = 5
+    # The tab alone measures more than max_length, but it separates words and
+    # never reaches a chunk: the words are joined by a space instead.
+    assert count_tab_as_ten("\t") > max_length
+
+    assert split_text(text, max_length=max_length, length=count_tab_as_ten) == ["ab cd"]
+
+
 def test_cutting_a_long_word_calls_length_a_bounded_number_of_times() -> None:
     word = "a" * 10_000
     max_length = 100
