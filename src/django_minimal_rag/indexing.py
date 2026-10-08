@@ -17,9 +17,9 @@ class Indexer:
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
-        embeddings = get_embeddings()
+        embeddings = get_embeddings() if any(groups.values()) else None
         for source_key, documents in groups.items():
-            if documents:
+            if documents and embeddings:
                 _replace_source(source_key, documents, embeddings)
             else:
                 _remove_source(source_key)
