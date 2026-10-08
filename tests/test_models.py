@@ -369,6 +369,28 @@ def test_str_of_a_chunk_with_an_80_character_text_is_its_text(
 
 
 @pytest.mark.django_db
+def test_str_of_a_chunk_with_an_81_character_text_is_cut_to_79_plus_ellipsis(
+    document: Document,
+) -> None:
+    # Characters 79, 80 and 81 are "X", "Y" and "Z", so the cut shows exactly
+    # where it falls: "X" is kept, "Y" and "Z" are replaced by the ellipsis.
+    prefix = ("The shop opens at 9 am. " * 4)[:78]
+    text = prefix + "XYZ"
+    assert len(text) == 81
+    chunk = Chunk.objects.create(
+        document=document,
+        rank=0,
+        text=text,
+        embedding_model="text-embedding-3-small",
+        embedding=[0.5, -1.0, 0.25],
+    )
+
+    expected = prefix + "X…"
+    assert len(expected) == 80
+    assert str(chunk) == expected
+
+
+@pytest.mark.django_db
 def test_deleting_a_document_deletes_its_chunks(document: Document) -> None:
     Chunk.objects.create(
         document=document,
