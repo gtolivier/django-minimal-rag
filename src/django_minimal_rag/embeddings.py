@@ -58,9 +58,9 @@ def get_embeddings() -> Embeddings:
     return backend(**config.get(OPTIONS_KEY, {}))
 
 
-def _embeddings_config() -> dict[str, Any]:
+def _embeddings_config() -> Mapping[str, Any]:
     try:
-        config: dict[str, Any] = getattr(settings, EMBEDDINGS_SETTING)
+        config: object = getattr(settings, EMBEDDINGS_SETTING)
     except AttributeError as error:
         msg = f"The {EMBEDDINGS_SETTING} setting is not set."
         raise ImproperlyConfigured(msg) from error
@@ -70,7 +70,7 @@ def _embeddings_config() -> dict[str, Any]:
     return config
 
 
-def _backend_path(config: dict[str, Any]) -> str:
+def _backend_path(config: Mapping[str, Any]) -> str:
     try:
         backend_path: str = config[BACKEND_KEY]
     except KeyError as error:
