@@ -1,5 +1,6 @@
 """Embedding backends."""
 
+import zlib
 from collections.abc import Sequence
 from typing import Any, Protocol
 
@@ -37,7 +38,13 @@ class FakeEmbeddings:
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one vector per text."""
-        return [[float(sum(map(ord, text)))] * self.dimensions for text in texts]
+        return [
+            [
+                float(zlib.crc32(f"{index}:{text}".encode()))
+                for index in range(self.dimensions)
+            ]
+            for text in texts
+        ]
 
 
 def get_embeddings() -> Embeddings:
