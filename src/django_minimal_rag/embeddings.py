@@ -10,6 +10,8 @@ from django.utils.module_loading import import_string
 
 FAKE_EMBEDDINGS_DEFAULT_DIMENSION = 8
 FAKE_EMBEDDINGS_MIN_DIMENSION = 2
+# Keeps 24 bits: every such integer is exactly representable in float32.
+FLOAT32_EXACT_MASK = 0xFFFFFF
 EMBEDDINGS_SETTING = "MINIMAL_RAG_EMBEDDINGS"
 BACKEND_KEY = "BACKEND"
 OPTIONS_KEY = "OPTIONS"
@@ -44,7 +46,8 @@ class FakeEmbeddings:
 
     def _embed_one(self, encoded_text: bytes) -> list[float]:
         return [
-            float(zlib.crc32(encoded_text, index)) for index in range(self.dimensions)
+            float(zlib.crc32(encoded_text, index) & FLOAT32_EXACT_MASK)
+            for index in range(self.dimensions)
         ]
 
 
