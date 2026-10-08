@@ -98,6 +98,17 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
 
 
 @pytest.mark.django_db
+def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1), faq_entry(2)]})
+
+    Indexer().replace({"faq:1": []})
+
+    assert not Source.objects.filter(source_key="faq:1").exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
 def test_replace_leaves_sources_absent_from_the_call_as_they_are() -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
     source = Source.objects.get()
