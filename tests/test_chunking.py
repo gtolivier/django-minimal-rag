@@ -107,6 +107,17 @@ def test_spaces_and_tabs_around_each_paragraph_are_stripped() -> None:
     ]
 
 
+def test_spaces_and_tabs_around_each_line_of_a_paragraph_are_stripped() -> None:
+    # Trailing spaces or a tab before each line break, leading spaces or a tab
+    # after it, inside a single paragraph.
+    text = "First line.  \n  Second line. \t\n\tThird line."
+    assert len(text) < MAX_LENGTH
+
+    assert split_text(text, max_length=MAX_LENGTH) == [
+        "First line.\nSecond line.\nThird line."
+    ]
+
+
 def test_paragraph_longer_than_max_length_is_split_between_words_packed() -> None:
     text = "alpha beta gamma delta epsilon"
     max_length = 12
