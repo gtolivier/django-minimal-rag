@@ -22,10 +22,12 @@ def test_text_shorter_than_max_length_gives_one_chunk_the_text_itself() -> None:
     assert split_text(text, max_length=MAX_LENGTH) == [text]
 
 
-def test_whitespace_around_the_text_is_stripped_from_its_chunk() -> None:
+def test_first_line_of_the_text_keeps_its_indentation_after_blank_lines() -> None:
+    # A blank line holding a space comes before the text, and spaces and a tab
+    # after it: both are dropped, but the tab indenting its first line is kept.
     text = " \n\tA short document.\n  \t"
 
-    assert split_text(text, max_length=MAX_LENGTH) == ["A short document."]
+    assert split_text(text, max_length=MAX_LENGTH) == ["\tA short document."]
 
 
 def test_two_paragraphs_exceeding_max_length_give_one_chunk_per_paragraph() -> None:
