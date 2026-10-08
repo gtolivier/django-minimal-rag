@@ -120,7 +120,7 @@ only reads chunks of the current model (both features to come).
 
 `django_minimal_rag.embeddings.FakeEmbeddings` is a backend for tests: no
 network, no model, deterministic across runs and processes. Its
-`dimensions` option (8 by default, at least 1) sets the length of its
+`dimensions` option (8 by default, at least 2) sets the length of its
 vectors, and its `model` is `fake-<dimensions>`. Different texts get
 different vectors, but their components are all positive, so any two
 vectors are close: it suits tests that look a text up by its own vector,
