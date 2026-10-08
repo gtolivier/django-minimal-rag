@@ -139,6 +139,13 @@ def test_fake_embeddings_with_zero_dimensions_raise_value_error() -> None:
         FakeEmbeddings(dimensions=0)
 
 
+def test_fake_embeddings_with_one_dimension_raise_value_error() -> None:
+    # With one dimension every vector is parallel: a cosine lookup could not
+    # tell texts apart.
+    with pytest.raises(ValueError):
+        FakeEmbeddings(dimensions=1)
+
+
 def test_fake_embeddings_model_names_the_default_dimension() -> None:
     assert FakeEmbeddings().model == "fake-8"
 
