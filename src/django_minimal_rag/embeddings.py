@@ -39,12 +39,11 @@ class FakeEmbeddings:
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one vector per text."""
+        return [self._embed_one(text.encode()) for text in texts]
+
+    def _embed_one(self, encoded_text: bytes) -> list[float]:
         return [
-            [
-                float(zlib.crc32(f"{index}:{text}".encode()))
-                for index in range(self.dimensions)
-            ]
-            for text in texts
+            float(zlib.crc32(encoded_text, index)) for index in range(self.dimensions)
         ]
 
 
@@ -77,6 +76,6 @@ def _import_backend(backend_path: str) -> type[Embeddings]:
     try:
         backend: type[Embeddings] = import_string(backend_path)
     except ImportError as error:
-        msg = f"Cannot import the embeddings backend {backend_path!r}."
+        msg = f"Cannot import the embeddings backend {backend_path!r}: {error}"
         raise ImproperlyConfigured(msg) from error
     return backend
