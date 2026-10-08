@@ -16,7 +16,7 @@ PERMISSION_NAME_MAX_LENGTH = APP_LABEL_MAX_LENGTH + len(".") + CODENAME_MAX_LENG
 class Source(models.Model):
     """A document source, identified by its key."""
 
-    source_key = models.CharField(max_length=255, unique=True)
+    source_key = models.TextField(unique=True)
 
     def __str__(self) -> str:
         return self.source_key
