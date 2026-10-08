@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import subprocess
 import sys
@@ -36,6 +37,11 @@ def embed_a_text_in_a_child_process(hash_seed: str) -> list[float]:
     return vector
 
 
+def cosine_similarity(first: list[float], second: list[float]) -> float:
+    dot_product = sum(a * b for a, b in zip(first, second, strict=True))
+    return dot_product / (math.hypot(*first) * math.hypot(*second))
+
+
 def test_fake_embeddings_of_no_texts_is_an_empty_list() -> None:
     assert FakeEmbeddings().embed([]) == []
 
@@ -60,6 +66,12 @@ def test_fake_embeddings_of_two_different_texts_are_different_vectors() -> None:
     first, second = FakeEmbeddings().embed(["a text", "another text"])
 
     assert first != second
+
+
+def test_fake_embeddings_of_two_different_texts_are_not_parallel() -> None:
+    first, second = FakeEmbeddings().embed(["a text", "another text"])
+
+    assert cosine_similarity(first, second) != pytest.approx(1)
 
 
 def test_fake_embeddings_of_two_different_texts_of_the_same_length_differ() -> None:
