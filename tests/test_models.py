@@ -198,3 +198,22 @@ def test_chunks_with_embeddings_of_different_dimensions_are_stored_side_by_side(
 
     assert list(small.embedding) == [0.5, -1.0, 0.25]
     assert list(large.embedding) == [0.5, -1.0, 0.25, 2.0, -0.125]
+
+
+@pytest.mark.django_db
+def test_chunk_without_an_embedding_cannot_be_stored() -> None:
+    source = Source.objects.create(source_key="faq:opening-hours")
+    document = Document.objects.create(
+        source=source,
+        title="Opening hours",
+        url="https://example.com/faq/opening-hours",
+        language="en",
+    )
+
+    with pytest.raises(IntegrityError):
+        Chunk.objects.create(
+            document=document,
+            rank=0,
+            text="The shop opens at 9 am.",
+            embedding_model="text-embedding-3-small",
+        )
