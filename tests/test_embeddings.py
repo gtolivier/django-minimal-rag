@@ -256,6 +256,16 @@ def test_get_embeddings_without_a_backend_raises_improperly_configured(
         get_embeddings()
 
 
+def test_get_embeddings_with_a_non_string_backend_raises_improperly_configured(
+    settings: "Settings",
+) -> None:
+    # A common mistake: the backend class itself instead of its dotted path.
+    settings.MINIMAL_RAG_EMBEDDINGS = {"BACKEND": FakeEmbeddings}
+
+    with pytest.raises(ImproperlyConfigured):
+        get_embeddings()
+
+
 def test_get_embeddings_with_a_non_mapping_setting_raises_improperly_configured(
     settings: "Settings",
 ) -> None:
