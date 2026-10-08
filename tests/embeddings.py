@@ -11,3 +11,48 @@ class SampleEmbeddings:
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one vector per text."""
         return [[float(len(text))] for text in texts]
+
+
+class RecordingEmbeddings:
+    """A backend appending every text it embeds to the ``embedded`` list.
+
+    The list is given through the setting's OPTIONS, so it outlives the
+    backend instances built on each call. A text's vector is its position in
+    that list: embedding the same text again gives it a new vector.
+    """
+
+    model = "recording"
+
+    def __init__(self, embedded: list[str]) -> None:
+        self.embedded = embedded
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Record ``texts`` and return one vector per text."""
+        vectors = []
+        for text in texts:
+            vectors.append([float(len(self.embedded)), 1.0])
+            self.embedded.append(text)
+        return vectors
+
+
+class EmbeddingFailedError(Exception):
+    """The error raised by ``FailingEmbeddings``."""
+
+
+class FailingEmbeddings:
+    """A backend raising ``EmbeddingFailedError`` when asked to embed ``failing_text``.
+
+    Any other text gets a vector, so the texts embedded before it succeed.
+    """
+
+    model = "failing"
+
+    def __init__(self, failing_text: str) -> None:
+        self.failing_text = failing_text
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return one vector per text, or raise if ``failing_text`` is among them."""
+        if self.failing_text in texts:
+            msg = f"Cannot embed {self.failing_text!r}."
+            raise EmbeddingFailedError(msg)
+        return [[float(len(text)), 1.0] for text in texts]
