@@ -1,8 +1,17 @@
 import dataclasses
+import re
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 import pytest
-from django.db import DEFAULT_DB_ALIAS, OperationalError, connections, transaction
+from django.db import (
+    DEFAULT_DB_ALIAS,
+    OperationalError,
+    connection,
+    connections,
+    transaction,
+)
+from django.test.utils import CaptureQueriesContext
 from psycopg.errors import LockNotAvailable
 
 from django_minimal_rag.chunking import chunk_group
@@ -71,6 +80,25 @@ def stored_content(source: Source) -> tuple[list[object], list[object]]:
         for chunk in Chunk.objects.filter(document__source=source).order_by("pk")
     ]
     return documents, chunks
+
+
+def source_keys_locked_by(queries: Iterable[Mapping[str, str]]) -> list[str]:
+    """The ``source_key`` of each source row ``queries`` lock, in order.
+
+    Only queries reading the source table ``FOR UPDATE`` count; each query's
+    ``sql`` has its parameters interpolated.
+    """
+    table = connection.ops.quote_name(Source._meta.db_table)
+    column = connection.ops.quote_name("source_key")
+    key_lookup = re.compile(
+        rf"{re.escape(table)}\.{re.escape(column)} = '((?:[^']|'')*)'"
+    )
+    return [
+        match.group(1).replace("''", "'")
+        for query in queries
+        if f"FROM {table}" in query["sql"] and "FOR UPDATE" in query["sql"]
+        for match in key_lookup.finditer(query["sql"])
+    ]
 
 
 @pytest.mark.django_db
@@ -507,3 +535,23 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
         other_connection.close()
 
     assert isinstance(raised.value.__cause__, LockNotAvailable)
+
+
+@pytest.mark.django_db
+def test_replace_locks_the_replaced_sources_in_sorted_source_key_order() -> None:
+    # Two calls replacing overlapping sources must lock their rows in the same
+    # order, whatever the order of their groups, or they can deadlock.
+    Indexer().replace(
+        {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        Indexer().replace(
+            {"faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)], "faq:1": [faq_entry(1)]}
+        )
+
+    assert source_keys_locked_by(captured.captured_queries) == [
+        "faq:1",
+        "faq:2",
+        "faq:3",
+    ]
