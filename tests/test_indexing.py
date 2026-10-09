@@ -842,6 +842,23 @@ def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None
     assert stored_content(other_source) == content_before
 
 
+@pytest.mark.django_db
+def test_prune_raises_and_removes_nothing_for_an_empty_model_label() -> None:
+    # ":1" is the key an empty model label would match up to the colon.
+    Indexer().replace({":1": [faq_entry_under(":1", 1)]})
+    stored_source = Source.objects.get()
+    content_before = stored_content(stored_source)
+
+    # The message names what is wrong, in any case and wording around it.
+    with pytest.raises(ValueError, match=r"(?i)\bmodel label\b"):
+        Indexer().prune("", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (stored_source.pk, ":1")
+    ]
+    assert stored_content(stored_source) == content_before
+
+
 @pytest.mark.django_db(transaction=True)
 def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deleting(
     other_connection: "BaseDatabaseWrapper",
