@@ -907,3 +907,37 @@ def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses(
             pruning.join()
 
     assert locked_while_the_prune_waits == ["faq:B", "faq:a"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_prune_leaves_a_source_committed_after_it_locked_its_sources(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
+    # Under READ COMMITTED, a query run after the locks sees the rows committed
+    # since: deleting by the same filter would remove a source never locked.
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    table = other_connection.ops.quote_name(Source._meta.db_table)
+    committed_after_the_locks: list[int] = []
+
+    def commit_a_source_after_the_locks(
+        execute: Callable[[str, Any, bool, dict[str, Any]], Any],
+        sql: str,
+        params: Any,
+        many: bool,
+        context: dict[str, Any],
+    ) -> Any:
+        result = execute(sql, params, many, context)
+        if "FOR UPDATE" in sql and not committed_after_the_locks:
+            with other_connection.cursor() as cursor:
+                cursor.execute(
+                    f"INSERT INTO {table} (source_key) VALUES ('faq:5') RETURNING id"
+                )
+                committed_after_the_locks.append(cursor.fetchone()[0])
+        return result
+
+    with connection.execute_wrapper(commit_a_source_after_the_locks):
+        Indexer().prune("faq", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (committed_after_the_locks[0], "faq:5")
+    ]
