@@ -189,6 +189,9 @@ Indexer().prune("faq", {"faq:1", "faq:3"})
   documents and chunks. Other sources are left as they are: `app.note`
   never matches `app.notebook:3`, and the label is matched literally
   (`_` and `%` are not wildcards).
+- `ValueError` is raised, and nothing is removed, when `model_label` is
+  empty or contains a colon: such a label would match the sources of
+  other models.
 - A call is one transaction. The rows of the removed sources are locked
   before anything is deleted, in the order `replace()` locks them (by
   code point, not by the database's collation), so a prune and a
