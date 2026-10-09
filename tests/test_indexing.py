@@ -2,7 +2,7 @@ import dataclasses
 import re
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -128,6 +128,18 @@ def source_keys_locked_by(queries: Iterable[Mapping[str, str]]) -> list[str]:
         if f"FROM {table}" in query["sql"] and "FOR UPDATE" in query["sql"]
         for match in key_lookup.finditer(query["sql"])
     ]
+
+
+@pytest.fixture
+def other_connection() -> "Iterator[BaseDatabaseWrapper]":
+    """A database connection of its own, in autocommit mode, closed afterwards.
+
+    Outside the test's transaction, it sees only what is committed, and
+    contends for row locks like another process.
+    """
+    other = connections.create_connection(DEFAULT_DB_ALIAS)
+    yield other
+    other.close()
 
 
 def source_keys_locked_against(other_connection: "BaseDatabaseWrapper") -> list[str]:
@@ -648,30 +660,24 @@ def test_replace_raises_and_stores_nothing_for_the_last_document_of_a_later_grou
 
 
 @pytest.mark.django_db(transaction=True)
-def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
-    None
-):
+def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
     source = Source.objects.get()
-    # A connection of its own, outside the test's transaction: it sees only
-    # what is committed, and contends for row locks like another process.
-    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
     table = other_connection.ops.quote_name(Source._meta.db_table)
     # FOR SHARE, not FOR UPDATE: inserting documents already takes a FOR KEY
     # SHARE lock on the source row (foreign-key check), which FOR SHARE does
     # not conflict with, unlike FOR UPDATE / FOR NO KEY UPDATE.
     probe = f"SELECT 1 FROM {table} WHERE id = %s FOR SHARE NOWAIT"
-    try:
-        with transaction.atomic():
-            Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
+    with transaction.atomic():
+        Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
 
-            with (
-                pytest.raises(OperationalError) as raised,
-                other_connection.cursor() as cursor,
-            ):
-                cursor.execute(probe, [source.pk])
-    finally:
-        other_connection.close()
+        with (
+            pytest.raises(OperationalError) as raised,
+            other_connection.cursor() as cursor,
+        ):
+            cursor.execute(probe, [source.pk])
 
     assert isinstance(raised.value.__cause__, LockNotAvailable)
 
@@ -837,16 +843,13 @@ def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None
 
 
 @pytest.mark.django_db(transaction=True)
-def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deleting() -> (
-    None
-):
+def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deleting(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
     # A replacement locks a source row, then changes its documents; a prune
     # deleting the source without that lock could delete documents while a
     # replacement inserts new ones under it.
     Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
-    # A connection of its own sees only what is committed, and contends for
-    # row locks like another process.
-    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
     locked_at_first_delete: list[list[str]] = []
 
     def probe_locks_before_first_delete(
@@ -860,17 +863,16 @@ def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deletin
             locked_at_first_delete.append(source_keys_locked_against(other_connection))
         return execute(sql, params, many, context)
 
-    try:
-        with connection.execute_wrapper(probe_locks_before_first_delete):
-            Indexer().prune("faq", set())
-    finally:
-        other_connection.close()
+    with connection.execute_wrapper(probe_locks_before_first_delete):
+        Indexer().prune("faq", set())
 
     assert locked_at_first_delete == [["faq:1", "faq:2"]]
 
 
 @pytest.mark.django_db(transaction=True)
-def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses() -> None:
+def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
     # A prune and a replacement sharing sources must lock their rows in the
     # same order, or they can deadlock. replace() sorts the keys as Python
     # does: "faq:B" before "faq:a", where a database collation such as
@@ -878,9 +880,6 @@ def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses() -
     # Stored "faq:a" first, so that a sequential scan meets it first.
     Indexer().replace({"faq:a": [faq_entry_under("faq:a", 1)]})
     Indexer().replace({"faq:B": [faq_entry_under("faq:B", 2)]})
-    # A connection of its own sees only what is committed, and contends for
-    # row locks like another process.
-    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
 
     def prune_by_sequential_scan() -> None:
         # Runs in a thread, on a connection of its own. Without index scans,
@@ -906,6 +905,5 @@ def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses() -
     finally:
         if pruning.is_alive():
             pruning.join()
-        other_connection.close()
 
     assert locked_while_the_prune_waits == ["faq:B", "faq:a"]
