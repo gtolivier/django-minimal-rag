@@ -14,7 +14,7 @@ def retrieve(
     query: str,
     *,
     permissions: Collection[str],  # noqa: ARG001 - not used yet, the tests so far need no permissions
-    max_distance: float,  # noqa: ARG001 - idem
+    max_distance: float,
     limit: int = DEFAULT_LIMIT,
 ) -> list[Chunk]:
     """Return the chunks relevant to ``query``, each with its ``distance``."""
@@ -25,5 +25,7 @@ def retrieve(
         # ordering (misc); at runtime the annotation is what sets it.
         Chunk.objects.annotate(  # type: ignore[no-redef,misc]
             distance=CosineDistance("embedding", query_embedding)
-        ).order_by("distance")[:limit]
+        )
+        .filter(distance__lte=max_distance)
+        .order_by("distance")[:limit]
     )
