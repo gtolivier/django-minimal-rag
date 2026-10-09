@@ -20,16 +20,19 @@ MODEL_LABEL_SEPARATOR = ":"
 class Indexer:
     """Stores documents, chunks and embeddings."""
 
+    @transaction.atomic
     def prune(self, model_label: str, kept_keys: AbstractSet[str]) -> None:
         """Remove the sources of ``model_label`` whose key is not in ``kept_keys``.
 
         ``model_label`` is the part of a source key before the separator.
         """
-        model_sources = Source.objects.filter(
+        # kept_keys may hold every instance of a model: sent to SQL, it could go
+        # over PostgreSQL's parameter limit. The removed keys are usually few.
+        stored_keys = Source.objects.filter(
             source_key__startswith=f"{model_label}{MODEL_LABEL_SEPARATOR}"
-        )
-        with transaction.atomic():
-            _delete_sources(model_sources.exclude(source_key__in=kept_keys))
+        ).values_list("source_key", flat=True)
+        removed_keys = set(stored_keys).difference(kept_keys)
+        _delete_sources(Source.objects.filter(source_key__in=removed_keys))
 
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
@@ -110,6 +113,8 @@ def _delete_sources(sources: QuerySet[Source]) -> None:
     that no document is deleted while a replacement inserts new ones under it.
     """
     locked_pks = _lock_sources(sources)
+    # Not sources.delete(): under READ COMMITTED, a second query also sees rows
+    # committed after the locks were taken, so it could delete an unlocked source.
     Source.objects.filter(pk__in=locked_pks).delete()
 
 
