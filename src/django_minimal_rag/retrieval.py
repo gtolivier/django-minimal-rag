@@ -55,7 +55,6 @@ def retrieve(
             document__permissions__contained_by=list(permissions),
         )
         .annotate(distance=_distance_to(question_embedding, embeddings.model))
-        .filter(distance__lte=max_distance)
         .order_by("distance")
         .values(
             "text",
@@ -65,7 +64,10 @@ def retrieve(
             source_key=F("document__source__source_key"),
         )[:limit]
     )
-    return [RetrievedChunk(**row) for row in rows]
+    # The threshold is applied to the nearest rows, not in the query: a WHERE
+    # on the distance would compute it a second time per row. Rows come
+    # nearest first, so those within the threshold are the same either way.
+    return [RetrievedChunk(**row) for row in rows if row["distance"] <= max_distance]
 
 
 def _distance_to(question_embedding: list[float], model: str) -> Case:
