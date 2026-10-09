@@ -60,3 +60,18 @@ class Chunk(models.Model):
 
     def __str__(self) -> str:
         return _shorten_for_str(self.text)
+
+    @property
+    def title(self) -> str:
+        """The title of the chunk's document."""
+        return self.document.title
+
+    @property
+    def url(self) -> str:
+        """The url of the chunk's document."""
+        return self.document.url
+
+    @property
+    def source_key(self) -> str:
+        """The key of the source of the chunk's document."""
+        return self.document.source.source_key
