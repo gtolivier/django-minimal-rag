@@ -177,13 +177,28 @@ implements.
   vector column has no fixed dimension, and each chunk stores the name of
   the model that embedded it, so a project chooses its dimension without
   generating a migration of its own; an HNSW index, which needs a fixed
-  dimension, will be a partial expression index per model, added with
-  retrieval. Permissions are an `ArrayField` of names, so host projects
-  install `django.contrib.postgres`. `title`, `url` and `language` are
+  dimension, will be a partial expression index per model, added when
+  the number of chunks calls for it (not part of feature 7). Retrieval's
+  distance sits inside a `CASE` on the model name, which keeps other
+  models' vectors out of the comparison but which no index can serve: the
+  index's feature revisits that expression. Permissions are an `ArrayField` of names, so host projects install
+  `django.contrib.postgres`. `title`, `url` and `language` are
   unbounded text; `source_key` is at most 500 characters, which keeps it
   within what a PostgreSQL unique index accepts. The app's primary keys
   are `BigAutoField`, set by its `AppConfig`. Its migration creates the
   pgvector extension if missing and never drops it on rollback.
+- **Permission filtering is part of the vector query.** A document's
+  permissions are all required of its reader, and an empty set is readable
+  by everyone — django-model-rag's `document.permissions <=
+  user_permissions`. The reader is a set of permission names, as
+  `user.get_all_permissions()` returns them, so the package does not
+  depend on `django.contrib.auth`. The query filters on them before its
+  limit, so that a reader never gets fewer results than allowed, nor a
+  chunk they may not read.
+- **The relevance threshold is a cosine distance, per query.**
+  `retrieve()` orders chunks by cosine distance and takes a
+  `max_distance`, inclusive, on each call; no setting yet. Its results are
+  plain values (`RetrievedChunk`), not model instances.
 
 ## Open questions
 
@@ -200,14 +215,6 @@ Each one is settled before the feature that needs its answer.
   Protocol's `url: str` accepts it, so either indexing rejects an empty
   `url` at runtime — and such documents cannot be indexed — or a citation
   falls back on something else, such as the title or the `source_key`.
-- **Permission filtering:** documents carry permission names
-  (`app_label.codename`). What they mean — all of them required, an empty
-  set readable by everyone, as django-model-rag's example
-  `document.permissions <= user_permissions` suggests — and filtering them
-  in the vector query rather than after it, so that a user never gets fewer
-  results than allowed, or an answer built from chunks they may not read.
-- **Relevance threshold:** which distance (cosine, inner product), and
-  whether the threshold is a setting, a per-query argument, or both.
 - **The LLM:** how a project chooses it, the prompt, the shape of a
   citation, and whether answers are streamed.
 - **Retries:** embedding runs inside `replace()`'s transaction, so
@@ -246,9 +253,11 @@ Provisional: the design pass may reorder, split or merge them.
     whole groups in one transaction, and the source row lock keeps two
     calls from interleaving (see "Decisions").
 - [x] **6. `prune()`.** Sources of a model that are not kept are removed.
-- [ ] **7. Retrieval.** The nearest chunks to a question that the user
+- [x] **7. Retrieval.** The nearest chunks to a question that the user
   may read, within the relevance threshold. Permission filtering is part of
-  the first retrieval, never added afterwards.
+  the first retrieval, never added afterwards. Retrieval does not filter on
+  `language` (the open question stays open), and the HNSW index is
+  deferred until the number of chunks calls for it.
 - [ ] **8. Cited answers.** The LLM answers from the retrieved chunks, with
   citations to their sources.
 - [ ] **9. Vectors reused across sources (optional, may be dropped).** A

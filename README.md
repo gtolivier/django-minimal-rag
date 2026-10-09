@@ -19,7 +19,7 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 ## Status
 
 Pre-alpha. Only the document Protocol, chunking, the storage models, the
-embedding backend setting and indexing exist so far: see
+embedding backend setting, indexing and retrieval exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -102,7 +102,8 @@ MINIMAL_RAG_EMBEDDINGS = {
 
 `django_minimal_rag.embeddings.get_embeddings()` imports `BACKEND` and
 builds `BACKEND(**OPTIONS)` anew on every call, so a backend holds nothing
-costly to build per instance; `OPTIONS` is optional. It raises
+costly to build per instance — an HTTP client or a loaded model belongs at
+module level, shared by its instances; `OPTIONS` is optional. It raises
 `ImproperlyConfigured` when the setting is missing or not a mapping, when
 `BACKEND` is missing, not a string or cannot be imported, and when
 `OPTIONS` is not a mapping.
@@ -111,7 +112,9 @@ A backend is any class shaped like `django_minimal_rag.embeddings.Embeddings`,
 a `typing.Protocol`:
 
 - `model` (`str`) — the name of the model it embeds with, stored with each
-  chunk;
+  chunk. Vectors are told apart by this name alone, so it changes whenever
+  the vectors would change, dimension included: a backend whose API takes
+  a dimension names it, e.g. `text-embedding-3-small@512`;
 - `embed(texts)` — takes a `Sequence[str]` and returns one vector, a
   `list[float]`, per text, in the same order. `replace()` sends all its
   new texts in one call, however many: a backend whose API limits the
@@ -119,7 +122,7 @@ a `typing.Protocol`:
 
 Changing models does not mix vectors: a chunk embedded by another model
 than the current backend's is re-embedded by `replace()`, and retrieval
-only reads chunks of the current model (a feature to come).
+only reads chunks of the current model.
 
 `django_minimal_rag.embeddings.FakeEmbeddings` is a backend for tests: no
 network, no model, deterministic across runs and processes. Its
@@ -198,6 +201,50 @@ Indexer().prune("faq", {"faq:1", "faq:3"})
   replacement sharing sources do not deadlock.
 
 `replace()` and `prune()` form django-model-rag's output Protocol.
+
+## Retrieval
+
+`django_minimal_rag.retrieval.retrieve(question, *, permissions,
+max_distance, limit=5)` returns the indexed chunks nearest to a question
+that the reader may read:
+
+```python
+chunks = retrieve(
+    "When does the shop open?",
+    permissions=request.user.get_all_permissions(),
+    max_distance=0.4,
+)
+```
+
+- The question is embedded by the backend `MINIMAL_RAG_EMBEDDINGS`
+  configures, and compared only to the chunks that backend's model
+  embedded: chunks left by another model, whatever their dimension, are
+  ignored until they are re-indexed.
+- Chunks are ordered nearest first by cosine distance, and at most `limit`
+  of them are returned. `max_distance` is the relevance threshold, passed
+  on each call: a chunk farther from the question is left out, a chunk
+  exactly at it is kept. With none left, the result is empty. Chunks at
+  the same distance are ordered by document, then by their rank in the
+  source, so the same question always gets the same chunks.
+- `permissions` is the set of permission names the reader holds
+  (`app_label.codename`, as `get_all_permissions()` returns them). A chunk
+  is returned only if the reader holds every permission of its document;
+  a document without permissions is readable by everyone. The filtering is
+  part of the vector query, so chunks the reader may not read never take
+  the place of chunks they may. `get_all_permissions()` lists only
+  permissions that exist as `Permission` rows, so an active superuser,
+  for whom `has_perm()` is always true, still does not get documents that
+  require a permission name defined only in code: pass the names such a
+  reader holds yourself if they should.
+- Each result is a frozen `RetrievedChunk` of plain values: its `text`,
+  its document's `title`, `url` and `source_key`, and its `distance` to the
+  question. They come from a single query.
+- `ValueError` is raised when `limit` is below 1, when the backend
+  returns another number of vectors than one for the question, and when
+  that vector is all zeros: it has no direction to compare chunks to.
+
+There is no vector index yet: each call compares the question to every
+chunk of the current model the reader may read.
 
 ## Requirements
 
