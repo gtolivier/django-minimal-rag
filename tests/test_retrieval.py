@@ -38,6 +38,14 @@ def use_fake_embeddings(settings: "Settings", dimensions: int) -> None:
     }
 
 
+def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
+    """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
+        "OPTIONS": {"vector_count": vector_count},
+    }
+
+
 def public_page(text: str, source_key: str = "page:1") -> SampleDocument:
     """A public page of the host project, in English, holding ``text``."""
     return SampleDocument(
@@ -359,4 +367,18 @@ def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
             permissions=frozenset(),
             max_distance=1.0,
             limit=0,
+        )
+
+
+@pytest.mark.django_db
+def test_retrieve_raises_value_error_when_the_backend_gives_the_question_two_vectors(
+    settings: "Settings",
+) -> None:
+    use_miscounting_embeddings(settings, vector_count=2)
+
+    # The word "vector" and the count 2, in any order and wording: not the
+    # incidental error of unpacking the backend's result.
+    with pytest.raises(ValueError, match=r"(?is)^(?=.*\bvectors?\b)(?=.*\b2\b)"):
+        retrieve(
+            "What are the opening hours?", permissions=frozenset(), max_distance=1.0
         )
