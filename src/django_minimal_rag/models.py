@@ -58,6 +58,9 @@ class Chunk(models.Model):
     embedding_model = models.CharField(max_length=EMBEDDING_MODEL_MAX_LENGTH)
     embedding = VectorField()
 
+    # Set by retrieve(), which annotates each chunk it returns; not a column.
+    distance: float
+
     def __str__(self) -> str:
         return _shorten_for_str(self.text)
 
