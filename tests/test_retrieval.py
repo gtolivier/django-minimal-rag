@@ -245,3 +245,18 @@ def test_retrieve_leaves_out_a_chunk_farther_from_the_question_than_max_distance
     retrieved = retrieve(question, permissions=frozenset(), max_distance=0.3)
 
     assert [chunk.text for chunk in retrieved] == [nearer_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_returns_a_chunk_exactly_at_max_distance_from_the_question(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop is on Main Street."
+    question = "When does the shop open?"
+    # The chunk is orthogonal to the question: cosine distance exactly 1.0.
+    use_chosen_embeddings(settings, {chunk_text: [0.0, 1.0], question: [1.0, 0.0]})
+    Indexer().replace({"page:1": [public_page(chunk_text)]})
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
