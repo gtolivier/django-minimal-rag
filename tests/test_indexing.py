@@ -703,3 +703,14 @@ def test_prune_with_no_source_stored_does_nothing() -> None:
     assert not Source.objects.exists()
     assert not Document.objects.exists()
     assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    Indexer().prune("faq", set())
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
