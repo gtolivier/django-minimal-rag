@@ -102,7 +102,8 @@ MINIMAL_RAG_EMBEDDINGS = {
 
 `django_minimal_rag.embeddings.get_embeddings()` imports `BACKEND` and
 builds `BACKEND(**OPTIONS)` anew on every call, so a backend holds nothing
-costly to build per instance; `OPTIONS` is optional. It raises
+costly to build per instance — an HTTP client or a loaded model belongs at
+module level, shared by its instances; `OPTIONS` is optional. It raises
 `ImproperlyConfigured` when the setting is missing or not a mapping, when
 `BACKEND` is missing, not a string or cannot be imported, and when
 `OPTIONS` is not a mapping.
@@ -111,7 +112,9 @@ A backend is any class shaped like `django_minimal_rag.embeddings.Embeddings`,
 a `typing.Protocol`:
 
 - `model` (`str`) — the name of the model it embeds with, stored with each
-  chunk;
+  chunk. Vectors are told apart by this name alone, so it changes whenever
+  the vectors would change, dimension included: a backend whose API takes
+  a dimension names it, e.g. `text-embedding-3-small@512`;
 - `embed(texts)` — takes a `Sequence[str]` and returns one vector, a
   `list[float]`, per text, in the same order. `replace()` sends all its
   new texts in one call, however many: a backend whose API limits the
@@ -119,7 +122,7 @@ a `typing.Protocol`:
 
 Changing models does not mix vectors: a chunk embedded by another model
 than the current backend's is re-embedded by `replace()`, and retrieval
-only reads chunks of the current model (a feature to come).
+only reads chunks of the current model.
 
 `django_minimal_rag.embeddings.FakeEmbeddings` is a backend for tests: no
 network, no model, deterministic across runs and processes. Its
@@ -220,7 +223,9 @@ chunks = retrieve(
 - Chunks are ordered nearest first by cosine distance, and at most `limit`
   of them are returned. `max_distance` is the relevance threshold, passed
   on each call: a chunk farther from the question is left out, a chunk
-  exactly at it is kept. With none left, the result is empty.
+  exactly at it is kept. With none left, the result is empty. Chunks at
+  the same distance are ordered by document, then by their rank in the
+  source, so the same question always gets the same chunks.
 - `permissions` is the set of permission names the reader holds
   (`app_label.codename`, as `get_all_permissions()` returns them). A chunk
   is returned only if the reader holds every permission of its document;
@@ -234,8 +239,9 @@ chunks = retrieve(
 - Each result is a frozen `RetrievedChunk` of plain values: its `text`,
   its document's `title`, `url` and `source_key`, and its `distance` to the
   question. They come from a single query.
-- `ValueError` is raised when `limit` is below 1, and when the backend
-  returns another number of vectors than one for the question.
+- `ValueError` is raised when `limit` is below 1, when the backend
+  returns another number of vectors than one for the question, and when
+  that vector is all zeros: it has no direction to compare chunks to.
 
 There is no vector index yet: each call compares the question to every
 chunk of the current model the reader may read.
