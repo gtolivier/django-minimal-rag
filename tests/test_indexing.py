@@ -714,3 +714,35 @@ def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> No
     assert not Source.objects.exists()
     assert not Document.objects.exists()
     assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others() -> (
+    None
+):
+    Indexer().replace(
+        {
+            "faq:1": [faq_entry(1)],
+            "faq:2": [faq_entry(2)],
+            "faq:3": [faq_entry(3)],
+            "faq:4": [faq_entry(4)],
+        }
+    )
+    kept_sources = list(
+        Source.objects.filter(source_key__in=["faq:1", "faq:3"]).order_by("source_key")
+    )
+    content_before = [stored_content(source) for source in kept_sources]
+
+    Indexer().prune("faq", {"faq:1", "faq:3"})
+
+    assert list(
+        Source.objects.order_by("source_key").values_list("pk", "source_key")
+    ) == [(source.pk, source.source_key) for source in kept_sources]
+    assert [stored_content(source) for source in kept_sources] == content_before
+    assert sorted(Document.objects.values_list("source__source_key", flat=True)) == [
+        "faq:1",
+        "faq:3",
+    ]
+    assert sorted(
+        Chunk.objects.values_list("document__source__source_key", flat=True)
+    ) == ["faq:1", "faq:3"]
