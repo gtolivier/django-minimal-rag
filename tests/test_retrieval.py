@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -291,3 +292,32 @@ def test_retrieve_ignores_chunks_embedded_by_another_model_even_of_another_dimen
     retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
 
     assert [chunk.text for chunk in retrieved] == [current_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_leaves_out_a_chunk_requiring_a_permission_the_reader_lacks(
+    settings: "Settings",
+) -> None:
+    secret_text = "The shop opens at eight for staff."
+    public_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    # Cosine distances to the question: secret 0.0, public 0.2. With a limit
+    # of 1, the public chunk is only returned if the secret one is left out by
+    # the query itself, before the limit applies.
+    use_chosen_embeddings(
+        settings,
+        {secret_text: [1.0, 0.0], public_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    secret_page = replace(
+        public_page(secret_text), permissions=frozenset({"app.view_secret"})
+    )
+    Indexer().replace({"page:1": [secret_page, public_page(public_text)]})
+
+    retrieved = retrieve(
+        question,
+        permissions=frozenset({"app.view_other"}),
+        max_distance=1.0,
+        limit=1,
+    )
+
+    assert [chunk.text for chunk in retrieved] == [public_text]
