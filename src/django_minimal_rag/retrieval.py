@@ -8,6 +8,7 @@ from django_minimal_rag.embeddings import get_embeddings
 from django_minimal_rag.models import Chunk
 
 DEFAULT_LIMIT = 5
+MIN_LIMIT = 1
 
 
 def retrieve(
@@ -18,6 +19,8 @@ def retrieve(
     limit: int = DEFAULT_LIMIT,
 ) -> list[Chunk]:
     """Return the chunks relevant to ``query``, each with its ``distance``."""
+    if limit < MIN_LIMIT:
+        raise ValueError(f"limit must be at least {MIN_LIMIT}, got {limit}")
     embeddings = get_embeddings()
     (query_embedding,) = embeddings.embed([query])
     return list(
