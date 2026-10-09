@@ -14,6 +14,12 @@ from django_minimal_rag.models import Chunk, Document, Source
 class Indexer:
     """Stores documents, chunks and embeddings."""
 
+    def prune(self, prefix: str, keep: frozenset[str]) -> None:
+        """Remove the sources under the prefix that are not kept."""
+        Source.objects.filter(source_key__startswith=prefix).exclude(
+            source_key__in=keep
+        ).delete()
+
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
         """Replace the indexed content with the given groups."""
