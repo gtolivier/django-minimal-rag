@@ -26,6 +26,9 @@ class Indexer:
 
         ``model_label`` is the part of a source key before the separator.
         """
+        if not model_label:
+            message = "The model label must not be empty."
+            raise ValueError(message)
         # kept_keys may hold every instance of a model: sent to SQL, it could go
         # over PostgreSQL's parameter limit. The removed keys are usually few.
         stored_keys = Source.objects.filter(
