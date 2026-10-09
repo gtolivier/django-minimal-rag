@@ -18,12 +18,16 @@ def retrieve(
     limit: int = DEFAULT_LIMIT,
 ) -> list[Chunk]:
     """Return the chunks relevant to ``query``, each with its ``distance``."""
-    (query_embedding,) = get_embeddings().embed([query])
+    embeddings = get_embeddings()
+    (query_embedding,) = embeddings.embed([query])
     return list(
         # The django-stubs plugin objects to annotating the name Chunk declares
         # for type checkers (no-redef), and cannot resolve it as a field when
         # ordering (misc); at runtime the annotation is what sets it.
-        Chunk.objects.annotate(  # type: ignore[no-redef,misc]
+        # Filtering on the model first keeps vectors of other dimensions out of
+        # the distance computation, which would fail on them.
+        Chunk.objects.filter(embedding_model=embeddings.model)
+        .annotate(  # type: ignore[no-redef,misc]
             distance=CosineDistance("embedding", query_embedding)
         )
         .filter(distance__lte=max_distance)
