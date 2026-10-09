@@ -19,8 +19,7 @@ def retrieve(
     limit: int = DEFAULT_LIMIT,
 ) -> list[Chunk]:
     """Return the chunks relevant to ``query``, each with its ``distance``."""
-    if limit < MIN_LIMIT:
-        raise ValueError(f"limit must be at least {MIN_LIMIT}, got {limit}")
+    _require_positive_limit(limit)
     embeddings = get_embeddings()
     (query_embedding,) = embeddings.embed([query])
     return list(
@@ -39,3 +38,10 @@ def retrieve(
         .filter(distance__lte=max_distance)
         .order_by("distance")[:limit]
     )
+
+
+def _require_positive_limit(limit: int) -> None:
+    """Raise ``ValueError`` if ``limit`` is below ``MIN_LIMIT``."""
+    if limit < MIN_LIMIT:
+        msg = f"limit must be at least {MIN_LIMIT}, got {limit}"
+        raise ValueError(msg)
