@@ -226,3 +226,22 @@ def test_retrieve_without_limit_returns_at_most_the_five_nearest_chunks(
         fourth_text,
         fifth_text,
     ]
+
+
+@pytest.mark.django_db
+def test_retrieve_leaves_out_a_chunk_farther_from_the_question_than_max_distance(
+    settings: "Settings",
+) -> None:
+    farther_text = "The shop is on Main Street."
+    nearer_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    # Cosine distances to the question: nearer 0.2, farther 0.4.
+    use_chosen_embeddings(
+        settings,
+        {farther_text: [3.0, 4.0], nearer_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    Indexer().replace({"page:1": [public_page(farther_text), public_page(nearer_text)]})
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=0.3)
+
+    assert [chunk.text for chunk in retrieved] == [nearer_text]
