@@ -101,3 +101,42 @@ def test_each_retrieved_chunk_carries_its_cosine_distance_to_the_question(
         nearer_text: pytest.approx(0.2),
         farther_text: pytest.approx(0.4),
     }
+
+
+@pytest.mark.django_db
+def test_retrieved_chunks_are_ordered_nearest_first_by_cosine_distance(
+    settings: "Settings",
+) -> None:
+    farthest_text = "The shop is on Main Street."
+    nearest_text = "The shop opens at nine."
+    middle_text = "The shop opens at nine on Sundays too."
+    question = "When does the shop open?"
+    # Cosine distances to the question: nearest ~0.08, middle 0.2, farthest 0.4.
+    # Euclidean distances order them otherwise: middle ~0.63, farthest ~4.47,
+    # nearest ~12.08. The chunks are indexed in neither of those orders.
+    use_chosen_embeddings(
+        settings,
+        {
+            farthest_text: [3.0, 4.0],
+            nearest_text: [12.0, 5.0],
+            middle_text: [0.8, 0.6],
+            question: [1.0, 0.0],
+        },
+    )
+    Indexer().replace(
+        {
+            "page:1": [
+                public_page(farthest_text),
+                public_page(nearest_text),
+                public_page(middle_text),
+            ]
+        }
+    )
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
+
+    assert [chunk.text for chunk in retrieved] == [
+        nearest_text,
+        middle_text,
+        farthest_text,
+    ]
