@@ -107,6 +107,9 @@ def _check_model_label(model_label: str) -> None:
     if not model_label:
         message = "The model label must not be empty"
         raise ValueError(message)
+    if MODEL_LABEL_SEPARATOR in model_label:
+        message = f"The model label must not contain {MODEL_LABEL_SEPARATOR!r}"
+        raise ValueError(message)
 
 
 def _remove_source(source_key: str) -> None:
