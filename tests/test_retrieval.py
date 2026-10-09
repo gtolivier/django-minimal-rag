@@ -79,3 +79,25 @@ def test_each_retrieved_chunk_carries_its_document_title_url_and_source_key(
     assert [(chunk.title, chunk.url, chunk.source_key) for chunk in retrieved] == [
         (document.title, document.url, document.source_key)
     ]
+
+
+@pytest.mark.django_db
+def test_each_retrieved_chunk_carries_its_cosine_distance_to_the_question(
+    settings: "Settings",
+) -> None:
+    nearer_text = "The shop opens at nine."
+    farther_text = "The shop closes at six."
+    question = "When does the shop open?"
+    # Cosine similarities with the question: 4/5 and 3/5.
+    use_chosen_embeddings(
+        settings,
+        {nearer_text: [4.0, 3.0], farther_text: [3.0, 4.0], question: [1.0, 0.0]},
+    )
+    Indexer().replace({"page:1": [public_page(nearer_text), public_page(farther_text)]})
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
+
+    assert {chunk.text: chunk.distance for chunk in retrieved} == {
+        nearer_text: pytest.approx(0.2),
+        farther_text: pytest.approx(0.4),
+    }
