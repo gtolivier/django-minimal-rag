@@ -177,15 +177,36 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
 - Each group is iterated once, so a sequence that yields its items only
   the first time is stored whole; documents need not be hashable.
 
-`replace()` is the first half of django-model-rag's output Protocol;
-`prune()`, the other half, is a feature to come.
+`Indexer().prune(model_label, kept_keys)` removes the sources of a model
+that are not kept:
+
+```python
+Indexer().prune("faq", {"faq:1", "faq:3"})
+```
+
+- Every stored source whose `source_key` starts with `model_label`
+  followed by a colon, and is not in `kept_keys`, is removed with its
+  documents and chunks. Other sources are left as they are: `app.note`
+  never matches `app.notebook:3`, and the label is matched literally
+  (`_` and `%` are not wildcards).
+- `ValueError` is raised, and nothing is removed, when `model_label` is
+  empty or contains a colon: such a label would match the sources of
+  other models.
+- A call is one transaction. The rows of the removed sources are locked
+  before anything is deleted, in the order `replace()` locks them (by
+  code point, not by the database's collation), so a prune and a
+  replacement sharing sources do not deadlock.
+
+`replace()` and `prune()` form django-model-rag's output Protocol.
 
 ## Requirements
 
 - Python 3.11+
 - Django 5.2 LTS, 6.0 or 6.1
 - PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector)
-  extension
+  extension, in a UTF-8 database (PostgreSQL's usual default): `prune()`
+  orders its locks by byte, which matches `replace()`'s code-point order
+  only in UTF-8
 - `django.contrib.postgres` in `INSTALLED_APPS`, next to the app: its
   models use PostgreSQL array fields, which Django 6.0 and later refuse to
   use without it (system check `postgres.E005`):

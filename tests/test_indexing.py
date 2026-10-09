@@ -1,18 +1,18 @@
 import dataclasses
 import re
-from collections.abc import Iterable, Mapping
-from typing import TYPE_CHECKING
+import threading
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from django.db import (
     DEFAULT_DB_ALIAS,
-    OperationalError,
     connection,
     connections,
     transaction,
 )
 from django.test.utils import CaptureQueriesContext
-from psycopg.errors import LockNotAvailable
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
@@ -23,6 +23,7 @@ from tests.embeddings import EmbeddingFailedError
 from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
+    from django.db.backends.base.base import BaseDatabaseWrapper
     from pytest_django import Settings
 
 
@@ -125,6 +126,55 @@ def source_keys_locked_by(queries: Iterable[Mapping[str, str]]) -> list[str]:
         if f"FROM {table}" in query["sql"] and "FOR UPDATE" in query["sql"]
         for match in key_lookup.finditer(query["sql"])
     ]
+
+
+@pytest.fixture
+def other_connection() -> "Iterator[BaseDatabaseWrapper]":
+    """A database connection of its own, in autocommit mode, closed afterwards.
+
+    Outside the test's transaction, it sees only what is committed, and
+    contends for row locks like another process.
+    """
+    other = connections.create_connection(DEFAULT_DB_ALIAS)
+    yield other
+    other.close()
+
+
+def source_keys_locked_against(other_connection: "BaseDatabaseWrapper") -> list[str]:
+    """The sorted ``source_key`` of each source row ``other_connection`` cannot lock.
+
+    ``other_connection`` must be in autocommit mode, so that its probing locks
+    are released as soon as taken.
+    """
+    table = other_connection.ops.quote_name(Source._meta.db_table)
+    with other_connection.cursor() as cursor:
+        cursor.execute(f"SELECT source_key FROM {table}")
+        stored = {source_key for (source_key,) in cursor.fetchall()}
+        # FOR SHARE conflicts with the FOR UPDATE lock of a replacement.
+        cursor.execute(f"SELECT source_key FROM {table} FOR SHARE SKIP LOCKED")
+        unlocked = {source_key for (source_key,) in cursor.fetchall()}
+    return sorted(stored - unlocked)
+
+
+def wait_until_a_query_waits_for_a_lock(
+    other_connection: "BaseDatabaseWrapper", timeout: float = 10.0
+) -> None:
+    """Return once a query of the database waits for a lock; fail after ``timeout``.
+
+    ``other_connection`` must be in autocommit mode, so that each poll sees
+    the current activity.
+    """
+    deadline = time.monotonic() + timeout
+    with other_connection.cursor() as cursor:
+        while time.monotonic() < deadline:
+            cursor.execute(
+                "SELECT EXISTS (SELECT FROM pg_stat_activity"
+                " WHERE datname = current_database() AND wait_event_type = 'Lock')"
+            )
+            if cursor.fetchone()[0]:
+                return
+            time.sleep(0.01)
+    pytest.fail(f"No query waited for a lock within {timeout} s")
 
 
 @pytest.mark.django_db
@@ -608,32 +658,16 @@ def test_replace_raises_and_stores_nothing_for_the_last_document_of_a_later_grou
 
 
 @pytest.mark.django_db(transaction=True)
-def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends() -> (
-    None
-):
+def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_ends(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
-    source = Source.objects.get()
-    # A connection of its own, outside the test's transaction: it sees only
-    # what is committed, and contends for row locks like another process.
-    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
-    table = other_connection.ops.quote_name(Source._meta.db_table)
-    # FOR SHARE, not FOR UPDATE: inserting documents already takes a FOR KEY
-    # SHARE lock on the source row (foreign-key check), which FOR SHARE does
-    # not conflict with, unlike FOR UPDATE / FOR NO KEY UPDATE.
-    probe = f"SELECT 1 FROM {table} WHERE id = %s FOR SHARE NOWAIT"
-    try:
-        with transaction.atomic():
-            Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
+    with transaction.atomic():
+        Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
 
-            with (
-                pytest.raises(OperationalError) as raised,
-                other_connection.cursor() as cursor,
-            ):
-                cursor.execute(probe, [source.pk])
-    finally:
-        other_connection.close()
+        locked_inside_the_transaction = source_keys_locked_against(other_connection)
 
-    assert isinstance(raised.value.__cause__, LockNotAvailable)
+    assert locked_inside_the_transaction == ["faq:1"]
 
 
 @pytest.mark.django_db
@@ -693,4 +727,249 @@ def test_replace_locks_removed_and_replaced_sources_in_sorted_source_key_order()
         "faq:1",
         "faq:2",
         "faq:3",
+    ]
+
+
+@pytest.mark.django_db
+def test_prune_with_no_source_stored_does_nothing() -> None:
+    Indexer().prune("faq", frozenset({"faq:1"}))
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> None:
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+
+    Indexer().prune("faq", set())
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others() -> (
+    None
+):
+    Indexer().replace(
+        {
+            "faq:1": [faq_entry(1)],
+            "faq:2": [faq_entry(2)],
+            "faq:3": [faq_entry(3)],
+            "faq:4": [faq_entry(4)],
+        }
+    )
+    kept_sources = list(
+        Source.objects.filter(source_key__in=["faq:1", "faq:3"]).order_by("source_key")
+    )
+    content_before = [stored_content(source) for source in kept_sources]
+
+    Indexer().prune("faq", {"faq:1", "faq:3"})
+
+    assert list(
+        Source.objects.order_by("source_key").values_list("pk", "source_key")
+    ) == [(source.pk, source.source_key) for source in kept_sources]
+    assert [stored_content(source) for source in kept_sources] == content_before
+    assert sorted(Document.objects.values_list("source__source_key", flat=True)) == [
+        "faq:1",
+        "faq:3",
+    ]
+    assert sorted(
+        Chunk.objects.values_list("document__source__source_key", flat=True)
+    ) == ["faq:1", "faq:3"]
+
+
+@pytest.mark.django_db
+def test_prune_leaves_the_sources_of_another_model_label_with_their_content() -> None:
+    Indexer().replace({"news:1": [faq_entry_under("news:1", 1)]})
+    other_source = Source.objects.get()
+    content_before = stored_content(other_source)
+
+    Indexer().prune("faq", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (other_source.pk, "news:1")
+    ]
+    assert stored_content(other_source) == content_before
+
+
+@pytest.mark.django_db
+def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one() -> (
+    None
+):
+    # The model label is matched up to the colon: "app.note" is not a model
+    # label of "app.notebook:3".
+    Indexer().replace({"app.notebook:3": [faq_entry_under("app.notebook:3", 3)]})
+    other_source = Source.objects.get()
+    content_before = stored_content(other_source)
+
+    Indexer().prune("app.note", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (other_source.pk, "app.notebook:3")
+    ]
+    assert stored_content(other_source) == content_before
+
+
+@pytest.mark.django_db
+def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None:
+    # In a SQL LIKE pattern, "_" matches any character: "my_app.page" would
+    # then be a model label of "myXapp.page:1".
+    Indexer().replace({"myXapp.page:1": [faq_entry_under("myXapp.page:1", 1)]})
+    other_source = Source.objects.get()
+    content_before = stored_content(other_source)
+
+    Indexer().prune("my_app.page", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (other_source.pk, "myXapp.page:1")
+    ]
+    assert stored_content(other_source) == content_before
+
+
+@pytest.mark.django_db
+def test_prune_raises_and_removes_nothing_for_an_empty_model_label() -> None:
+    # ":1" is the key an empty model label would match up to the colon.
+    Indexer().replace({":1": [faq_entry_under(":1", 1)]})
+    stored_source = Source.objects.get()
+    content_before = stored_content(stored_source)
+
+    # The message names what is wrong, in any case and wording around it.
+    with pytest.raises(ValueError, match=r"(?i)\bmodel label\b"):
+        Indexer().prune("", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (stored_source.pk, ":1")
+    ]
+    assert stored_content(stored_source) == content_before
+
+
+@pytest.mark.django_db
+def test_prune_raises_and_removes_nothing_for_a_model_label_holding_the_separator() -> (
+    None
+):
+    # "faq::1" is a key the model label "faq:" would match up to the colon.
+    Indexer().replace({"faq::1": [faq_entry_under("faq::1", 1)]})
+    stored_source = Source.objects.get()
+    content_before = stored_content(stored_source)
+
+    # The message names what is wrong, in any case and wording around it.
+    with pytest.raises(ValueError, match=r"(?i)\bmodel label\b"):
+        Indexer().prune("faq:", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (stored_source.pk, "faq::1")
+    ]
+    assert stored_content(stored_source) == content_before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deleting(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
+    # A replacement locks a source row, then changes its documents; a prune
+    # deleting the source without that lock could delete documents while a
+    # replacement inserts new ones under it.
+    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+    locked_at_first_delete: list[list[str]] = []
+
+    def probe_locks_before_first_delete(
+        execute: Callable[[str, Any, bool, dict[str, Any]], Any],
+        sql: str,
+        params: Any,
+        many: bool,
+        context: dict[str, Any],
+    ) -> Any:
+        if sql.startswith("DELETE") and not locked_at_first_delete:
+            locked_at_first_delete.append(source_keys_locked_against(other_connection))
+        return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(probe_locks_before_first_delete):
+        Indexer().prune("faq", set())
+
+    assert locked_at_first_delete == [["faq:1", "faq:2"]]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
+    # A prune and a replacement sharing sources must lock their rows in the
+    # same order, or they can deadlock. replace() sorts the keys as Python
+    # does: "faq:B" before "faq:a", where a database collation such as
+    # en_US puts "faq:a" first.
+    # Stored "faq:a" first, so that a sequential scan meets it first.
+    Indexer().replace({"faq:a": [faq_entry_under("faq:a", 1)]})
+    Indexer().replace({"faq:B": [faq_entry_under("faq:B", 2)]})
+    # A thread does not propagate what it raises: kept here to re-raise.
+    raised_by_the_prune: list[Exception] = []
+
+    def prune_by_sequential_scan() -> None:
+        # Runs in a thread, on a connection of its own. Without index scans,
+        # the database meets the rows in storage order: only a sort locks them
+        # in key order, whatever plan it would choose otherwise.
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute("SET LOCAL enable_indexscan = off")
+                cursor.execute("SET LOCAL enable_bitmapscan = off")
+                Indexer().prune("faq", set())
+        except Exception as error:
+            raised_by_the_prune.append(error)
+        finally:
+            connection.close()
+
+    pruning = threading.Thread(target=prune_by_sequential_scan)
+    try:
+        with transaction.atomic():
+            # Holding the row "faq:a" makes the prune wait there, still
+            # holding the rows it locked before it.
+            Source.objects.select_for_update().get(source_key="faq:a")
+            pruning.start()
+            wait_until_a_query_waits_for_a_lock(other_connection)
+            locked_while_the_prune_waits = source_keys_locked_against(other_connection)
+    finally:
+        if pruning.is_alive():
+            pruning.join()
+        # Raised here, it also surfaces when a prune failing early makes the
+        # wait above time out.
+        if raised_by_the_prune:
+            raise raised_by_the_prune[0]
+
+    assert locked_while_the_prune_waits == ["faq:B", "faq:a"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_prune_leaves_a_source_committed_after_it_locked_its_sources(
+    other_connection: "BaseDatabaseWrapper",
+) -> None:
+    # Under READ COMMITTED, a query run after the locks sees the rows committed
+    # since: deleting by the same filter would remove a source never locked.
+    Indexer().replace({"faq:1": [faq_entry(1)]})
+    table = other_connection.ops.quote_name(Source._meta.db_table)
+    committed_after_the_locks: list[int] = []
+
+    def commit_a_source_after_the_locks(
+        execute: Callable[[str, Any, bool, dict[str, Any]], Any],
+        sql: str,
+        params: Any,
+        many: bool,
+        context: dict[str, Any],
+    ) -> Any:
+        result = execute(sql, params, many, context)
+        if "FOR UPDATE" in sql and not committed_after_the_locks:
+            with other_connection.cursor() as cursor:
+                cursor.execute(
+                    f"INSERT INTO {table} (source_key) VALUES ('faq:5') RETURNING id"
+                )
+                committed_after_the_locks.append(cursor.fetchone()[0])
+        return result
+
+    with connection.execute_wrapper(commit_a_source_after_the_locks):
+        Indexer().prune("faq", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (committed_after_the_locks[0], "faq:5")
     ]

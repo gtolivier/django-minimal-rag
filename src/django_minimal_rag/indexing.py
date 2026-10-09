@@ -1,18 +1,40 @@
 """Indexing of documents into the storage models."""
 
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
 from django.db import transaction
+from django.db.models import QuerySet
+from django.db.models.functions import Collate
 
 from django_minimal_rag.chunking import split_text
 from django_minimal_rag.documents import Document as DocumentProtocol
 from django_minimal_rag.embeddings import Embeddings, get_embeddings
 from django_minimal_rag.models import Chunk, Document, Source
 
+MODEL_LABEL_SEPARATOR = ":"
+"""What ends the model label at the start of a source key."""
+
 
 class Indexer:
     """Stores documents, chunks and embeddings."""
+
+    @transaction.atomic
+    def prune(self, model_label: str, kept_keys: AbstractSet[str]) -> None:
+        """Remove the sources of ``model_label`` whose key is not in ``kept_keys``.
+
+        ``model_label`` is the part of a source key before the separator.
+        Raise ``ValueError`` if it is empty or holds the separator.
+        """
+        _check_model_label(model_label)
+        # kept_keys may hold every instance of a model: sent to SQL, it could go
+        # over PostgreSQL's parameter limit. The removed keys are usually few.
+        stored_keys = Source.objects.filter(
+            source_key__startswith=f"{model_label}{MODEL_LABEL_SEPARATOR}"
+        ).values_list("source_key", flat=True)
+        removed_keys = set(stored_keys).difference(kept_keys)
+        _delete_sources(Source.objects.filter(source_key__in=removed_keys))
 
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
@@ -80,11 +102,49 @@ def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -
             raise ValueError(message)
 
 
+def _check_model_label(model_label: str) -> None:
+    """Raise ``ValueError`` if ``model_label`` is empty or holds the separator."""
+    if not model_label:
+        message = "The model label must not be empty"
+        raise ValueError(message)
+    if MODEL_LABEL_SEPARATOR in model_label:
+        message = f"The model label must not contain {MODEL_LABEL_SEPARATOR!r}"
+        raise ValueError(message)
+
+
 def _remove_source(source_key: str) -> None:
     """Remove the source stored under ``source_key``, with its content."""
-    sources = Source.objects.filter(source_key=source_key)
-    list(sources.select_for_update())  # lock first, as a replacement does
-    sources.delete()
+    _delete_sources(Source.objects.filter(source_key=source_key))
+
+
+def _delete_sources(sources: QuerySet[Source]) -> None:
+    """Delete ``sources`` with their content, once their rows are locked.
+
+    Must run in a transaction. A replacement locks a source row before changing
+    its documents; the rows are locked first, in the same source key order, so
+    that no document is deleted while a replacement inserts new ones under it.
+    """
+    locked_pks = _lock_sources(sources)
+    # Not sources.delete(): under READ COMMITTED, a second query also sees rows
+    # committed after the locks were taken, so it could delete an unlocked source.
+    Source.objects.filter(pk__in=locked_pks).delete()
+
+
+def _lock_sources(sources: QuerySet[Source]) -> list[int]:
+    """Lock the rows of ``sources`` in one query, in the order replace() uses.
+
+    Return the primary keys of the rows locked. Must run in a transaction.
+    """
+    # replace() sorts the keys as Python does, by code point. The "C" collation
+    # compares bytes, which for UTF-8 is code-point order; the database's
+    # default collation may order them otherwise.
+    in_python_order = Collate("source_key", "C")
+    # Evaluating the queryset is what takes the locks.
+    return list(
+        sources.select_for_update()
+        .order_by(in_python_order)
+        .values_list("pk", flat=True)
+    )
 
 
 def _stored_vectors(source: Source, embedding_model: str) -> dict[str, Any]:

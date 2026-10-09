@@ -245,7 +245,7 @@ Provisional: the design pass may reorder, split or merge them.
   - no constraint keeps chunks from being stored twice: each call replaces
     whole groups in one transaction, and the source row lock keeps two
     calls from interleaving (see "Decisions").
-- [ ] **6. `prune()`.** Sources of a model that are not kept are removed.
+- [x] **6. `prune()`.** Sources of a model that are not kept are removed.
 - [ ] **7. Retrieval.** The nearest chunks to a question that the user
   may read, within the relevance threshold. Permission filtering is part of
   the first retrieval, never added afterwards.
