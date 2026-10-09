@@ -778,3 +778,19 @@ def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one(
         (other_source.pk, "app.notebook:3")
     ]
     assert stored_content(other_source) == content_before
+
+
+@pytest.mark.django_db
+def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None:
+    # In a SQL LIKE pattern, "_" matches any character: "my_app.page" would
+    # then be a model label of "myXapp.page:1".
+    Indexer().replace({"myXapp.page:1": [faq_entry_under("myXapp.page:1", 1)]})
+    other_source = Source.objects.get()
+    content_before = stored_content(other_source)
+
+    Indexer().prune("my_app.page", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (other_source.pk, "myXapp.page:1")
+    ]
+    assert stored_content(other_source) == content_before
