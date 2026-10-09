@@ -62,3 +62,20 @@ def test_retrieve_returns_the_text_of_a_single_chunk_indexed_near_the_question(
     retrieved = retrieve(question, permissions=frozenset(), max_distance=0.1)
 
     assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
+def test_each_retrieved_chunk_carries_its_document_title_url_and_source_key(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
+    document = public_page(chunk_text)
+    Indexer().replace({document.source_key: [document]})
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=0.1)
+
+    assert [(chunk.title, chunk.url, chunk.source_key) for chunk in retrieved] == [
+        (document.title, document.url, document.source_key)
+    ]
