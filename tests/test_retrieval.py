@@ -177,3 +177,52 @@ def test_retrieve_returns_at_most_limit_chunks_the_nearest_ones(
     retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0, limit=2)
 
     assert [chunk.text for chunk in retrieved] == [nearest_text, middle_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_without_limit_returns_at_most_the_five_nearest_chunks(
+    settings: "Settings",
+) -> None:
+    sixth_text = "The shop sells bread."
+    fifth_text = "The shop has a car park."
+    fourth_text = "The shop is on Main Street."
+    third_text = "The shop opens at nine on Sundays too."
+    second_text = "The shop opens at nine on weekdays."
+    first_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    # Cosine distances to the question: first ~0.01, second ~0.08, third 0.2,
+    # fourth 0.4, fifth ~0.62, sixth 1.0. The farthest is indexed first.
+    use_chosen_embeddings(
+        settings,
+        {
+            sixth_text: [0.0, 1.0],
+            fifth_text: [5.0, 12.0],
+            fourth_text: [3.0, 4.0],
+            third_text: [4.0, 3.0],
+            second_text: [12.0, 5.0],
+            first_text: [7.0, 1.0],
+            question: [1.0, 0.0],
+        },
+    )
+    Indexer().replace(
+        {
+            "page:1": [
+                public_page(sixth_text),
+                public_page(fifth_text),
+                public_page(fourth_text),
+                public_page(third_text),
+                public_page(second_text),
+                public_page(first_text),
+            ]
+        }
+    )
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
+
+    assert [chunk.text for chunk in retrieved] == [
+        first_text,
+        second_text,
+        third_text,
+        fourth_text,
+        fifth_text,
+    ]
