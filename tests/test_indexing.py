@@ -694,3 +694,12 @@ def test_replace_locks_removed_and_replaced_sources_in_sorted_source_key_order()
         "faq:2",
         "faq:3",
     ]
+
+
+@pytest.mark.django_db
+def test_prune_with_no_source_stored_does_nothing() -> None:
+    Indexer().prune("faq", frozenset({"faq:1"}))
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
