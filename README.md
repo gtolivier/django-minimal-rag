@@ -226,7 +226,11 @@ chunks = retrieve(
   is returned only if the reader holds every permission of its document;
   a document without permissions is readable by everyone. The filtering is
   part of the vector query, so chunks the reader may not read never take
-  the place of chunks they may.
+  the place of chunks they may. `get_all_permissions()` lists only
+  permissions that exist as `Permission` rows, so an active superuser,
+  for whom `has_perm()` is always true, still does not get documents that
+  require a permission name defined only in code: pass the names such a
+  reader holds yourself if they should.
 - Each result is a frozen `RetrievedChunk` of plain values: its `text`,
   its document's `title`, `url` and `source_key`, and its `distance` to the
   question. They come from a single query.

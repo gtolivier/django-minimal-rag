@@ -178,8 +178,11 @@ implements.
   the model that embedded it, so a project chooses its dimension without
   generating a migration of its own; an HNSW index, which needs a fixed
   dimension, will be a partial expression index per model, added when
-  the number of chunks calls for it (not part of feature 7). Permissions are an `ArrayField` of names, so host projects
-  install `django.contrib.postgres`. `title`, `url` and `language` are
+  the number of chunks calls for it (not part of feature 7). Retrieval's
+  distance sits inside a `CASE` on the model name, which keeps other
+  models' vectors out of the comparison but which no index can serve: the
+  index's feature revisits that expression. Permissions are an `ArrayField` of names, so host projects install
+  `django.contrib.postgres`. `title`, `url` and `language` are
   unbounded text; `source_key` is at most 500 characters, which keeps it
   within what a PostgreSQL unique index accepts. The app's primary keys
   are `BigAutoField`, set by its `AppConfig`. Its migration creates the
