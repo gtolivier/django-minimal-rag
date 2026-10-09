@@ -746,3 +746,17 @@ def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others(
     assert sorted(
         Chunk.objects.values_list("document__source__source_key", flat=True)
     ) == ["faq:1", "faq:3"]
+
+
+@pytest.mark.django_db
+def test_prune_leaves_the_sources_of_another_model_label_with_their_content() -> None:
+    Indexer().replace({"news:1": [faq_entry_under("news:1", 1)]})
+    other_source = Source.objects.get()
+    content_before = stored_content(other_source)
+
+    Indexer().prune("faq", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (other_source.pk, "news:1")
+    ]
+    assert stored_content(other_source) == content_before
