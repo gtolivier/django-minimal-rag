@@ -41,10 +41,12 @@ def retrieve(
     relevance threshold: a chunk whose cosine distance to the question is
     above it is left out. ``permissions`` are the names of the permissions
     the reader holds: a chunk is returned only if the reader holds every
-    permission its document requires.
+    permission its document requires. Chunks at the same distance are
+    ordered by their document's id, then by their rank in it.
 
-    Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, or if the
-    backend does not return exactly one vector for the question.
+    Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if the
+    backend does not return exactly one vector for the question, or if that
+    vector is all zeros.
     """
     _require_positive_limit(limit)
     embeddings = get_embeddings()
@@ -95,7 +97,8 @@ def _require_positive_limit(limit: int) -> None:
 def _embed_question(question: str, embeddings: Embeddings) -> list[float]:
     """Return the one vector ``embeddings`` gives ``question``.
 
-    Raises ``ValueError`` when the backend returns another number of vectors.
+    Raises ``ValueError`` when the backend returns another number of vectors,
+    or a vector of all zeros, which has no direction to compare chunks to.
     """
     vectors = embeddings.embed([question])
     if len(vectors) != 1:
