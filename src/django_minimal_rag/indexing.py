@@ -10,15 +10,19 @@ from django_minimal_rag.documents import Document as DocumentProtocol
 from django_minimal_rag.embeddings import Embeddings, get_embeddings
 from django_minimal_rag.models import Chunk, Document, Source
 
+MODEL_LABEL_SEPARATOR = ":"
+"""What ends the model label at the start of a source key."""
+
 
 class Indexer:
     """Stores documents, chunks and embeddings."""
 
     def prune(self, prefix: str, keep: Set[str]) -> None:
-        """Remove the sources under the prefix that are not kept."""
-        Source.objects.filter(source_key__startswith=f"{prefix}:").exclude(
-            source_key__in=keep
-        ).delete()
+        """Remove the sources of the model label ``prefix`` that are not kept."""
+        model_sources = Source.objects.filter(
+            source_key__startswith=f"{prefix}{MODEL_LABEL_SEPARATOR}"
+        )
+        model_sources.exclude(source_key__in=keep).delete()
 
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
