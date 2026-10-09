@@ -21,7 +21,11 @@ def retrieve(
     """Return the chunks relevant to ``query``, each with its ``distance``."""
     _require_positive_limit(limit)
     embeddings = get_embeddings()
-    (query_embedding,) = embeddings.embed([query])
+    query_embeddings = embeddings.embed([query])
+    if len(query_embeddings) != 1:
+        msg = f"expected 1 vector for the question, got {len(query_embeddings)}"
+        raise ValueError(msg)
+    (query_embedding,) = query_embeddings
     return list(
         # The django-stubs plugin objects to annotating the name Chunk declares
         # for type checkers (no-redef), and cannot resolve it as a field when
