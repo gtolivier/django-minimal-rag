@@ -16,7 +16,7 @@ class Indexer:
 
     def prune(self, prefix: str, keep: Set[str]) -> None:
         """Remove the sources under the prefix that are not kept."""
-        Source.objects.filter(source_key__startswith=prefix).exclude(
+        Source.objects.filter(source_key__startswith=f"{prefix}:").exclude(
             source_key__in=keep
         ).delete()
 
