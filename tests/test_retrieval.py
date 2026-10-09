@@ -416,3 +416,19 @@ def test_retrieve_raises_value_error_when_the_backend_gives_the_question_two_vec
         retrieve(
             "What are the opening hours?", permissions=frozenset(), max_distance=1.0
         )
+
+
+@pytest.mark.django_db
+def test_retrieve_raises_value_error_when_the_backend_gives_the_question_a_zero_vector(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    # A vector of norm 0 has no direction: its cosine distance to the chunk
+    # cannot be computed, which must not pass for "no relevant chunk".
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [0.0, 0.0]})
+    index_public_pages(chunk_text)
+
+    # The word "zero", in any wording: the error is about the question's vector.
+    with pytest.raises(ValueError, match=r"(?i)\bzeros?\b"):
+        retrieve(question, permissions=frozenset(), max_distance=2.0)
