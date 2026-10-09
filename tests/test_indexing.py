@@ -19,7 +19,11 @@ from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import MutableDocument, SampleDocument
-from tests.embeddings import EmbeddingFailedError
+from tests.embeddings import (
+    EmbeddingFailedError,
+    use_fake_embeddings,
+    use_miscounting_embeddings,
+)
 from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
@@ -27,12 +31,7 @@ if TYPE_CHECKING:
     from pytest_django import Settings
 
 
-@pytest.fixture(autouse=True)
-def fake_embeddings(settings: "Settings") -> None:
-    """Configure the embedding backend meant for tests."""
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
-    }
+pytestmark = pytest.mark.usefixtures("fake_embeddings")
 
 
 def use_recording_embeddings(settings: "Settings") -> list[str]:
@@ -56,14 +55,6 @@ def use_call_recording_embeddings(settings: "Settings") -> list[list[str]]:
         "OPTIONS": {"embedded": [], "calls": calls},
     }
     return calls
-
-
-def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
-    """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
-        "OPTIONS": {"vector_count": vector_count},
-    }
 
 
 def faq_entry(number: int) -> SampleDocument:
@@ -447,10 +438,7 @@ def test_replace_stores_an_unhashable_document_with_its_chunks() -> None:
 def test_replace_embeds_each_chunk_with_the_configured_backend(
     settings: "Settings",
 ) -> None:
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
-        "OPTIONS": {"dimensions": 3},
-    }
+    use_fake_embeddings(settings, dimensions=3)
     backend = FakeEmbeddings(dimensions=3)
     [expected_vector] = backend.embed(["Answer to question 1."])
 
