@@ -55,7 +55,7 @@ def retrieve(
             document__permissions__contained_by=list(permissions),
         )
         .annotate(distance=_distance_to(question_embedding, embeddings.model))
-        .order_by("distance")
+        .order_by("distance", "document_id", "rank")
         .values(
             "text",
             "distance",
