@@ -201,7 +201,9 @@ Indexer().prune("faq", {"faq:1", "faq:3"})
 - Python 3.11+
 - Django 5.2 LTS, 6.0 or 6.1
 - PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector)
-  extension
+  extension, in a UTF-8 database (PostgreSQL's usual default): `prune()`
+  orders its locks by byte, which matches `replace()`'s code-point order
+  only in UTF-8
 - `django.contrib.postgres` in `INSTALLED_APPS`, next to the app: its
   models use PostgreSQL array fields, which Django 6.0 and later refuse to
   use without it (system check `postgres.E005`):
