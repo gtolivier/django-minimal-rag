@@ -3,8 +3,10 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
+from django.db.models import F
 
 from django_minimal_rag.indexing import Indexer
+from django_minimal_rag.models import Chunk
 from django_minimal_rag.retrieval import retrieve
 from tests.documents import SampleDocument
 
@@ -221,6 +223,59 @@ def test_retrieve_without_limit_returns_at_most_the_five_nearest_chunks(
         third_text,
         fourth_text,
         fifth_text,
+    ]
+
+
+@pytest.mark.django_db
+def test_chunks_at_the_same_distance_are_ordered_by_document_id_then_rank(
+    settings: "Settings",
+) -> None:
+    # Two paragraphs too long to share a chunk: the first document is split in
+    # two chunks, of ranks 0 and 1.
+    first_opening = " ".join(["The shop opens at nine."] * 30)
+    first_closing = " ".join(["The shop closes at six."] * 30)
+    second_text = "The shop is on Main Street."
+    third_text = "The shop has a car park."
+    question = "When does the shop open?"
+    # Every chunk is at a cosine distance of 0.0 from the question.
+    use_chosen_embeddings(
+        settings,
+        {
+            text: [1.0, 0.0]
+            for text in (
+                first_opening,
+                first_closing,
+                second_text,
+                third_text,
+                question,
+            )
+        },
+    )
+    # The ranks are those of a source's chunks: the second document's chunk
+    # has rank 2, the third's rank 0. Ordering by rank alone would put the
+    # third document's chunk second.
+    Indexer().replace(
+        {
+            "page:1": [
+                public_page(f"{first_opening}\n\n{first_closing}"),
+                public_page(second_text),
+            ],
+            "page:2": [public_page(third_text, "page:2")],
+        }
+    )
+    # Rewriting the rows from the last written to the first stores a new
+    # version of each after the others: PostgreSQL then reads them in the
+    # reverse of the order they were indexed in.
+    for chunk_pk in Chunk.objects.order_by("-pk").values_list("pk", flat=True):
+        Chunk.objects.filter(pk=chunk_pk).update(rank=F("rank"))
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
+
+    assert [chunk.text for chunk in retrieved] == [
+        first_opening,
+        first_closing,
+        second_text,
+        third_text,
     ]
 
 
