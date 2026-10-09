@@ -58,23 +58,5 @@ class Chunk(models.Model):
     embedding_model = models.CharField(max_length=EMBEDDING_MODEL_MAX_LENGTH)
     embedding = VectorField()
 
-    # Set by retrieve(), which annotates each chunk it returns; not a column.
-    distance: float
-
     def __str__(self) -> str:
         return _shorten_for_str(self.text)
-
-    @property
-    def title(self) -> str:
-        """The title of the chunk's document."""
-        return self.document.title
-
-    @property
-    def url(self) -> str:
-        """The url of the chunk's document."""
-        return self.document.url
-
-    @property
-    def source_key(self) -> str:
-        """The key of the source of the chunk's document."""
-        return self.document.source.source_key
