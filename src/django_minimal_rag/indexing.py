@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence, Set
 from typing import Any, NamedTuple
 
 from django.db import transaction
+from django.db.models import QuerySet
 
 from django_minimal_rag.chunking import split_text
 from django_minimal_rag.documents import Document as DocumentProtocol
@@ -22,10 +23,8 @@ class Indexer:
         model_sources = Source.objects.filter(
             source_key__startswith=f"{prefix}{MODEL_LABEL_SEPARATOR}"
         )
-        removed = model_sources.exclude(source_key__in=keep)
         with transaction.atomic():
-            list(removed.select_for_update().order_by("source_key"))  # lock first
-            removed.delete()
+            _delete_sources(model_sources.exclude(source_key__in=keep))
 
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
@@ -95,8 +94,17 @@ def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -
 
 def _remove_source(source_key: str) -> None:
     """Remove the source stored under ``source_key``, with its content."""
-    sources = Source.objects.filter(source_key=source_key)
-    list(sources.select_for_update())  # lock first, as a replacement does
+    _delete_sources(Source.objects.filter(source_key=source_key))
+
+
+def _delete_sources(sources: QuerySet[Source]) -> None:
+    """Delete ``sources`` with their content, once their rows are locked.
+
+    Must run in a transaction. A replacement locks a source row before changing
+    its documents; the rows are locked first, in the same source key order, so
+    that no document is deleted while a replacement inserts new ones under it.
+    """
+    list(sources.select_for_update().order_by("source_key"))
     sources.delete()
 
 
