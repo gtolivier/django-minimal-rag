@@ -18,8 +18,9 @@ def retrieve(
     (query_embedding,) = get_embeddings().embed([query])
     return list(
         # The django-stubs plugin objects to annotating the name Chunk declares
-        # for type checkers; at runtime the annotation is what sets it.
-        Chunk.objects.annotate(  # type: ignore[no-redef]
+        # for type checkers (no-redef), and cannot resolve it as a field when
+        # ordering (misc); at runtime the annotation is what sets it.
+        Chunk.objects.annotate(  # type: ignore[no-redef,misc]
             distance=CosineDistance("embedding", query_embedding)
-        )
+        ).order_by("distance")
     )
