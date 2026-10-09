@@ -1,5 +1,7 @@
 import dataclasses
 import re
+import threading
+import time
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -142,6 +144,27 @@ def source_keys_locked_against(other_connection: "BaseDatabaseWrapper") -> list[
         cursor.execute(f"SELECT source_key FROM {table} FOR SHARE SKIP LOCKED")
         unlocked = {source_key for (source_key,) in cursor.fetchall()}
     return sorted(stored - unlocked)
+
+
+def wait_until_a_query_waits_for_a_lock(
+    other_connection: "BaseDatabaseWrapper", timeout: float = 10.0
+) -> None:
+    """Return once a query of the database waits for a lock; fail after ``timeout``.
+
+    ``other_connection`` must be in autocommit mode, so that each poll sees
+    the current activity.
+    """
+    deadline = time.monotonic() + timeout
+    with other_connection.cursor() as cursor:
+        while time.monotonic() < deadline:
+            cursor.execute(
+                "SELECT EXISTS (SELECT FROM pg_stat_activity"
+                " WHERE datname = current_database() AND wait_event_type = 'Lock')"
+            )
+            if cursor.fetchone()[0]:
+                return
+            time.sleep(0.01)
+    pytest.fail(f"No query waited for a lock within {timeout} s")
 
 
 @pytest.mark.django_db
@@ -844,3 +867,45 @@ def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deletin
         other_connection.close()
 
     assert locked_at_first_delete == [["faq:1", "faq:2"]]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses() -> None:
+    # A prune and a replacement sharing sources must lock their rows in the
+    # same order, or they can deadlock. replace() sorts the keys as Python
+    # does: "faq:B" before "faq:a", where a database collation such as
+    # en_US puts "faq:a" first.
+    # Stored "faq:a" first, so that a sequential scan meets it first.
+    Indexer().replace({"faq:a": [faq_entry_under("faq:a", 1)]})
+    Indexer().replace({"faq:B": [faq_entry_under("faq:B", 2)]})
+    # A connection of its own sees only what is committed, and contends for
+    # row locks like another process.
+    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
+
+    def prune_by_sequential_scan() -> None:
+        # Runs in a thread, on a connection of its own. Without index scans,
+        # the database meets the rows in storage order: only a sort locks them
+        # in key order, whatever plan it would choose otherwise.
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute("SET LOCAL enable_indexscan = off")
+                cursor.execute("SET LOCAL enable_bitmapscan = off")
+                Indexer().prune("faq", set())
+        finally:
+            connection.close()
+
+    pruning = threading.Thread(target=prune_by_sequential_scan)
+    try:
+        with transaction.atomic():
+            # Holding the row "faq:a" makes the prune wait there, still
+            # holding the rows it locked before it.
+            Source.objects.select_for_update().get(source_key="faq:a")
+            pruning.start()
+            wait_until_a_query_waits_for_a_lock(other_connection)
+            locked_while_the_prune_waits = source_keys_locked_against(other_connection)
+    finally:
+        if pruning.is_alive():
+            pruning.join()
+        other_connection.close()
+
+    assert locked_while_the_prune_waits == ["faq:B", "faq:a"]
