@@ -9,17 +9,13 @@ from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk
 from django_minimal_rag.retrieval import retrieve
 from tests.documents import SampleDocument
+from tests.embeddings import use_fake_embeddings, use_miscounting_embeddings
 
 if TYPE_CHECKING:
     from pytest_django import Settings
 
 
-@pytest.fixture(autouse=True)
-def fake_embeddings(settings: "Settings") -> None:
-    """Configure the embedding backend meant for tests."""
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
-    }
+pytestmark = pytest.mark.usefixtures("fake_embeddings")
 
 
 def use_chosen_embeddings(
@@ -29,22 +25,6 @@ def use_chosen_embeddings(
     settings.MINIMAL_RAG_EMBEDDINGS = {
         "BACKEND": "tests.embeddings.ChosenEmbeddings",
         "OPTIONS": {"vectors": vectors},
-    }
-
-
-def use_fake_embeddings(settings: "Settings", dimensions: int) -> None:
-    """Configure ``FakeEmbeddings`` of ``dimensions``, whose model is "fake-<n>"."""
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
-        "OPTIONS": {"dimensions": dimensions},
-    }
-
-
-def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
-    """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
-        "OPTIONS": {"vector_count": vector_count},
     }
 
 

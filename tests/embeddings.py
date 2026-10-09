@@ -1,6 +1,10 @@
-"""The test bench's embedding backend: one a host project would configure."""
+"""The test bench's embedding backends, and helpers configuring them for a test."""
 
 from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pytest_django import Settings
 
 
 class SampleEmbeddings:
@@ -99,3 +103,19 @@ class MiscountingEmbeddings:
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return ``vector_count`` vectors, ignoring ``texts``."""
         return [[float(position), 1.0] for position in range(self.vector_count)]
+
+
+def use_fake_embeddings(settings: "Settings", dimensions: int) -> None:
+    """Configure ``FakeEmbeddings`` of ``dimensions``, whose model is "fake-<n>"."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "OPTIONS": {"dimensions": dimensions},
+    }
+
+
+def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
+    """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.MiscountingEmbeddings",
+        "OPTIONS": {"vector_count": vector_count},
+    }
