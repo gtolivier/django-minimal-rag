@@ -102,4 +102,7 @@ def _embed_question(question: str, embeddings: Embeddings) -> list[float]:
         msg = f"expected 1 vector for the question, got {len(vectors)}"
         raise ValueError(msg)
     (question_embedding,) = vectors
+    if not any(question_embedding):
+        msg = "the question's vector is all zeros, it has no direction"
+        raise ValueError(msg)
     return question_embedding
