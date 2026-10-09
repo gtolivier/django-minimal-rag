@@ -58,6 +58,11 @@ def public_page(text: str, source_key: str = "page:1") -> SampleDocument:
     )
 
 
+def index_public_pages(*texts: str) -> None:
+    """Index a public page holding each of ``texts``, in order, under "page:1"."""
+    Indexer().replace({"page:1": [public_page(text) for text in texts]})
+
+
 @pytest.mark.django_db
 def test_retrieve_with_nothing_indexed_returns_an_empty_list() -> None:
     retrieved = retrieve(
@@ -74,7 +79,7 @@ def test_retrieve_returns_the_text_of_a_single_chunk_indexed_near_the_question(
     chunk_text = "The shop opens at nine."
     question = "When does the shop open?"
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_public_pages(chunk_text)
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=0.1)
 
@@ -110,7 +115,7 @@ def test_each_retrieved_chunk_carries_its_cosine_distance_to_the_question(
         settings,
         {nearer_text: [4.0, 3.0], farther_text: [3.0, 4.0], question: [1.0, 0.0]},
     )
-    Indexer().replace({"page:1": [public_page(nearer_text), public_page(farther_text)]})
+    index_public_pages(nearer_text, farther_text)
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
 
@@ -140,15 +145,7 @@ def test_retrieved_chunks_are_ordered_nearest_first_by_cosine_distance(
             question: [1.0, 0.0],
         },
     )
-    Indexer().replace(
-        {
-            "page:1": [
-                public_page(farthest_text),
-                public_page(nearest_text),
-                public_page(middle_text),
-            ]
-        }
-    )
+    index_public_pages(farthest_text, nearest_text, middle_text)
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
 
@@ -180,16 +177,7 @@ def test_retrieve_returns_at_most_limit_chunks_the_nearest_ones(
             question: [1.0, 0.0],
         },
     )
-    Indexer().replace(
-        {
-            "page:1": [
-                public_page(farthest_text),
-                public_page(far_text),
-                public_page(middle_text),
-                public_page(nearest_text),
-            ]
-        }
-    )
+    index_public_pages(farthest_text, far_text, middle_text, nearest_text)
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0, limit=2)
 
@@ -221,17 +209,8 @@ def test_retrieve_without_limit_returns_at_most_the_five_nearest_chunks(
             question: [1.0, 0.0],
         },
     )
-    Indexer().replace(
-        {
-            "page:1": [
-                public_page(sixth_text),
-                public_page(fifth_text),
-                public_page(fourth_text),
-                public_page(third_text),
-                public_page(second_text),
-                public_page(first_text),
-            ]
-        }
+    index_public_pages(
+        sixth_text, fifth_text, fourth_text, third_text, second_text, first_text
     )
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
@@ -257,7 +236,7 @@ def test_retrieve_leaves_out_a_chunk_farther_from_the_question_than_max_distance
         settings,
         {farther_text: [3.0, 4.0], nearer_text: [4.0, 3.0], question: [1.0, 0.0]},
     )
-    Indexer().replace({"page:1": [public_page(farther_text), public_page(nearer_text)]})
+    index_public_pages(farther_text, nearer_text)
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=0.3)
 
@@ -272,7 +251,7 @@ def test_retrieve_returns_a_chunk_exactly_at_max_distance_from_the_question(
     question = "When does the shop open?"
     # The chunk is orthogonal to the question: cosine distance exactly 1.0.
     use_chosen_embeddings(settings, {chunk_text: [0.0, 1.0], question: [1.0, 0.0]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_public_pages(chunk_text)
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
 
