@@ -177,8 +177,24 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
 - Each group is iterated once, so a sequence that yields its items only
   the first time is stored whole; documents need not be hashable.
 
-`replace()` is the first half of django-model-rag's output Protocol;
-`prune()`, the other half, is a feature to come.
+`Indexer().prune(model_label, kept_keys)` removes the sources of a model
+that are not kept:
+
+```python
+Indexer().prune("faq", {"faq:1", "faq:3"})
+```
+
+- Every stored source whose `source_key` starts with `model_label`
+  followed by a colon, and is not in `kept_keys`, is removed with its
+  documents and chunks. Other sources are left as they are: `app.note`
+  never matches `app.notebook:3`, and the label is matched literally
+  (`_` and `%` are not wildcards).
+- A call is one transaction. The rows of the removed sources are locked
+  before anything is deleted, in the order `replace()` locks them (by
+  code point, not by the database's collation), so a prune and a
+  replacement sharing sources do not deadlock.
+
+`replace()` and `prune()` form django-model-rag's output Protocol.
 
 ## Requirements
 
