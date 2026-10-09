@@ -13,7 +13,7 @@ DEFAULT_LIMIT = 5
 def retrieve(
     query: str,
     *,
-    permissions: Collection[str],  # noqa: ARG001 - not used yet, the tests so far need no permissions
+    permissions: Collection[str],
     max_distance: float,
     limit: int = DEFAULT_LIMIT,
 ) -> list[Chunk]:
@@ -26,7 +26,10 @@ def retrieve(
         # ordering (misc); at runtime the annotation is what sets it.
         # Filtering on the model first keeps vectors of other dimensions out of
         # the distance computation, which would fail on them.
-        Chunk.objects.filter(embedding_model=embeddings.model)
+        Chunk.objects.filter(
+            embedding_model=embeddings.model,
+            document__permissions__contained_by=list(permissions),
+        )
         .annotate(  # type: ignore[no-redef,misc]
             distance=CosineDistance("embedding", query_embedding)
         )
