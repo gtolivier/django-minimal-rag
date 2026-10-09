@@ -109,21 +109,25 @@ def _delete_sources(sources: QuerySet[Source]) -> None:
     its documents; the rows are locked first, in the same source key order, so
     that no document is deleted while a replacement inserts new ones under it.
     """
-    _lock_sources(sources)
-    sources.delete()
+    locked_pks = _lock_sources(sources)
+    Source.objects.filter(pk__in=locked_pks).delete()
 
 
-def _lock_sources(sources: QuerySet[Source]) -> None:
+def _lock_sources(sources: QuerySet[Source]) -> list[int]:
     """Lock the rows of ``sources`` in one query, in the order replace() uses.
 
-    Must run in a transaction.
+    Return the primary keys of the rows locked. Must run in a transaction.
     """
     # replace() sorts the keys as Python does, by code point. The "C" collation
     # compares bytes, which for UTF-8 is code-point order; the database's
     # default collation may order them otherwise.
     in_python_order = Collate("source_key", "C")
     # Evaluating the queryset is what takes the locks.
-    list(sources.select_for_update().order_by(in_python_order))
+    return list(
+        sources.select_for_update()
+        .order_by(in_python_order)
+        .values_list("pk", flat=True)
+    )
 
 
 def _stored_vectors(source: Source, embedding_model: str) -> dict[str, Any]:
