@@ -1,6 +1,6 @@
 """The test bench's embedding backend: one a host project would configure."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 
 class SampleEmbeddings:
@@ -64,6 +64,24 @@ class FailingEmbeddings:
             msg = f"Cannot embed {self.failing_text!r}."
             raise EmbeddingFailedError(msg)
         return [[float(len(text)), 1.0] for text in texts]
+
+
+class ChosenEmbeddings:
+    """A backend giving each text the vector chosen for it in ``vectors``.
+
+    The vectors are given through the setting's OPTIONS, so a test decides
+    which texts are near each other. Embedding a text with no chosen vector
+    raises ``KeyError``: a test only embeds the texts it chose vectors for.
+    """
+
+    model = "chosen"
+
+    def __init__(self, vectors: Mapping[str, list[float]]) -> None:
+        self.vectors = vectors
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return the vector chosen for each text."""
+        return [self.vectors[text] for text in texts]
 
 
 class MiscountingEmbeddings:
