@@ -916,6 +916,8 @@ def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses(
     # Stored "faq:a" first, so that a sequential scan meets it first.
     Indexer().replace({"faq:a": [faq_entry_under("faq:a", 1)]})
     Indexer().replace({"faq:B": [faq_entry_under("faq:B", 2)]})
+    # A thread does not propagate what it raises: kept here to re-raise.
+    raised_by_the_prune: list[Exception] = []
 
     def prune_by_sequential_scan() -> None:
         # Runs in a thread, on a connection of its own. Without index scans,
@@ -926,6 +928,8 @@ def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses(
                 cursor.execute("SET LOCAL enable_indexscan = off")
                 cursor.execute("SET LOCAL enable_bitmapscan = off")
                 Indexer().prune("faq", set())
+        except Exception as error:
+            raised_by_the_prune.append(error)
         finally:
             connection.close()
 
@@ -941,6 +945,10 @@ def test_prune_locks_the_sources_it_removes_in_the_sorted_order_replace_uses(
     finally:
         if pruning.is_alive():
             pruning.join()
+        # Raised here, it also surfaces when a prune failing early makes the
+        # wait above time out.
+        if raised_by_the_prune:
+            raise raised_by_the_prune[0]
 
     assert locked_while_the_prune_waits == ["faq:B", "faq:a"]
 
