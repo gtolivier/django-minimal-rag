@@ -104,7 +104,9 @@ def _delete_sources(sources: QuerySet[Source]) -> None:
     its documents; the rows are locked first, in the same source key order, so
     that no document is deleted while a replacement inserts new ones under it.
     """
-    list(sources.select_for_update().order_by("source_key"))
+    # Sorted by Python, as replace() sorts, not by the database collation.
+    for source_key in sorted(sources.values_list("source_key", flat=True)):
+        list(Source.objects.select_for_update().filter(source_key=source_key))
     sources.delete()
 
 
