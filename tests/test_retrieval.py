@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -277,6 +277,19 @@ def test_chunks_at_the_same_distance_are_ordered_by_document_id_then_rank(
         second_text,
         third_text,
     ]
+
+
+@pytest.mark.django_db
+def test_a_retrieved_chunk_cannot_be_modified(settings: "Settings") -> None:
+    chunk_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    index_public_pages(chunk_text)
+    (chunk,) = retrieve(question, permissions=frozenset(), max_distance=1.0)
+
+    with pytest.raises(FrozenInstanceError):
+        # The assignment is the point of the test: mypy rightly rejects it.
+        chunk.text = "The shop opens at ten."  # type: ignore[misc]
 
 
 @pytest.mark.django_db
