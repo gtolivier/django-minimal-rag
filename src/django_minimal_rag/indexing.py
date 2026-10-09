@@ -22,7 +22,10 @@ class Indexer:
         model_sources = Source.objects.filter(
             source_key__startswith=f"{prefix}{MODEL_LABEL_SEPARATOR}"
         )
-        model_sources.exclude(source_key__in=keep).delete()
+        removed = model_sources.exclude(source_key__in=keep)
+        with transaction.atomic():
+            list(removed.select_for_update().order_by("source_key"))  # lock first
+            removed.delete()
 
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
