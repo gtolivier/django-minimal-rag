@@ -4,7 +4,7 @@ from collections.abc import Collection
 
 from pgvector.django import CosineDistance
 
-from django_minimal_rag.embeddings import get_embeddings
+from django_minimal_rag.embeddings import Embeddings, get_embeddings
 from django_minimal_rag.models import Chunk
 
 DEFAULT_LIMIT = 5
@@ -21,11 +21,7 @@ def retrieve(
     """Return the chunks relevant to ``query``, each with its ``distance``."""
     _require_positive_limit(limit)
     embeddings = get_embeddings()
-    query_embeddings = embeddings.embed([query])
-    if len(query_embeddings) != 1:
-        msg = f"expected 1 vector for the question, got {len(query_embeddings)}"
-        raise ValueError(msg)
-    (query_embedding,) = query_embeddings
+    query_embedding = _embed_question(query, embeddings)
     return list(
         # The django-stubs plugin objects to annotating the name Chunk declares
         # for type checkers (no-redef), and cannot resolve it as a field when
@@ -49,3 +45,16 @@ def _require_positive_limit(limit: int) -> None:
     if limit < MIN_LIMIT:
         msg = f"limit must be at least {MIN_LIMIT}, got {limit}"
         raise ValueError(msg)
+
+
+def _embed_question(query: str, embeddings: Embeddings) -> list[float]:
+    """Return the one vector ``embeddings`` gives ``query``.
+
+    Raises ``ValueError`` when the backend returns another number of vectors.
+    """
+    query_embeddings = embeddings.embed([query])
+    if len(query_embeddings) != 1:
+        msg = f"expected 1 vector for the question, got {len(query_embeddings)}"
+        raise ValueError(msg)
+    (query_embedding,) = query_embeddings
+    return query_embedding
