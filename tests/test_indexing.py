@@ -760,3 +760,21 @@ def test_prune_leaves_the_sources_of_another_model_label_with_their_content() ->
         (other_source.pk, "news:1")
     ]
     assert stored_content(other_source) == content_before
+
+
+@pytest.mark.django_db
+def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one() -> (
+    None
+):
+    # The model label is matched up to the colon: "app.note" is not a model
+    # label of "app.notebook:3".
+    Indexer().replace({"app.notebook:3": [faq_entry_under("app.notebook:3", 3)]})
+    other_source = Source.objects.get()
+    content_before = stored_content(other_source)
+
+    Indexer().prune("app.note", set())
+
+    assert list(Source.objects.values_list("pk", "source_key")) == [
+        (other_source.pk, "app.notebook:3")
+    ]
+    assert stored_content(other_source) == content_before
