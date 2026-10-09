@@ -1,6 +1,6 @@
 """Indexing of documents into the storage models."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Set
 from typing import Any, NamedTuple
 
 from django.db import transaction
@@ -14,7 +14,7 @@ from django_minimal_rag.models import Chunk, Document, Source
 class Indexer:
     """Stores documents, chunks and embeddings."""
 
-    def prune(self, prefix: str, keep: frozenset[str]) -> None:
+    def prune(self, prefix: str, keep: Set[str]) -> None:
         """Remove the sources under the prefix that are not kept."""
         Source.objects.filter(source_key__startswith=prefix).exclude(
             source_key__in=keep
