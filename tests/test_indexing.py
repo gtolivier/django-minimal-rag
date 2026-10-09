@@ -8,13 +8,11 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from django.db import (
     DEFAULT_DB_ALIAS,
-    OperationalError,
     connection,
     connections,
     transaction,
 )
 from django.test.utils import CaptureQueriesContext
-from psycopg.errors import LockNotAvailable
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
@@ -664,22 +662,12 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
     other_connection: "BaseDatabaseWrapper",
 ) -> None:
     Indexer().replace({"faq:1": [faq_entry(1)]})
-    source = Source.objects.get()
-    table = other_connection.ops.quote_name(Source._meta.db_table)
-    # FOR SHARE, not FOR UPDATE: inserting documents already takes a FOR KEY
-    # SHARE lock on the source row (foreign-key check), which FOR SHARE does
-    # not conflict with, unlike FOR UPDATE / FOR NO KEY UPDATE.
-    probe = f"SELECT 1 FROM {table} WHERE id = %s FOR SHARE NOWAIT"
     with transaction.atomic():
         Indexer().replace({"faq:1": [faq_entry_under("faq:1", 2)]})
 
-        with (
-            pytest.raises(OperationalError) as raised,
-            other_connection.cursor() as cursor,
-        ):
-            cursor.execute(probe, [source.pk])
+        locked_inside_the_transaction = source_keys_locked_against(other_connection)
 
-    assert isinstance(raised.value.__cause__, LockNotAvailable)
+    assert locked_inside_the_transaction == ["faq:1"]
 
 
 @pytest.mark.django_db
