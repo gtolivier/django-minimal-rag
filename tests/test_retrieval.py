@@ -321,3 +321,31 @@ def test_retrieve_leaves_out_a_chunk_requiring_a_permission_the_reader_lacks(
     )
 
     assert [chunk.text for chunk in retrieved] == [public_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_returns_a_chunk_only_to_a_reader_holding_all_its_permissions(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop opens at eight for managers."
+    question = "When does the shop open?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    page = replace(
+        public_page(chunk_text),
+        permissions=frozenset({"app.view_a", "app.view_b"}),
+    )
+    Indexer().replace({"page:1": [page]})
+
+    retrieved_by_full_reader = retrieve(
+        question,
+        permissions=frozenset({"app.view_a", "app.view_b", "app.view_c"}),
+        max_distance=1.0,
+    )
+    retrieved_by_partial_reader = retrieve(
+        question,
+        permissions=frozenset({"app.view_a", "app.view_c"}),
+        max_distance=1.0,
+    )
+
+    assert [chunk.text for chunk in retrieved_by_full_reader] == [chunk_text]
+    assert retrieved_by_partial_reader == []
