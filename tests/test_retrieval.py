@@ -29,11 +29,19 @@ def use_chosen_embeddings(
     }
 
 
-def public_page(text: str) -> SampleDocument:
+def use_fake_embeddings(settings: "Settings", dimensions: int) -> None:
+    """Configure ``FakeEmbeddings`` of ``dimensions``, whose model is "fake-<n>"."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "django_minimal_rag.embeddings.FakeEmbeddings",
+        "OPTIONS": {"dimensions": dimensions},
+    }
+
+
+def public_page(text: str, source_key: str = "page:1") -> SampleDocument:
     """A public page of the host project, in English, holding ``text``."""
     return SampleDocument(
         text=text,
-        source_key="page:1",
+        source_key=source_key,
         title="Opening hours",
         url="https://example.com/opening-hours/",
         language="en",
@@ -260,3 +268,26 @@ def test_retrieve_returns_a_chunk_exactly_at_max_distance_from_the_question(
     retrieved = retrieve(question, permissions=frozenset(), max_distance=1.0)
 
     assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_ignores_chunks_embedded_by_another_model_even_of_another_dimension(
+    settings: "Settings",
+) -> None:
+    same_dimension_text = "The shop opened at eight last year."
+    other_dimension_text = "The shop opened at seven long ago."
+    current_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    # Left by previous models: "fake-2" gives 2 dimensions, like the current
+    # model, and "fake-3" gives 3. Fake vectors have no negative component, so
+    # the 2-dimension one is within a cosine distance of 1.0 of the question.
+    use_fake_embeddings(settings, dimensions=2)
+    Indexer().replace({"page:1": [public_page(same_dimension_text, "page:1")]})
+    use_fake_embeddings(settings, dimensions=3)
+    Indexer().replace({"page:2": [public_page(other_dimension_text, "page:2")]})
+    use_chosen_embeddings(settings, {current_text: [1.0, 0.0], question: [1.0, 0.0]})
+    Indexer().replace({"page:3": [public_page(current_text, "page:3")]})
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
+
+    assert [chunk.text for chunk in retrieved] == [current_text]
