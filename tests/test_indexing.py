@@ -1,7 +1,7 @@
 import dataclasses
 import re
-from collections.abc import Iterable, Mapping
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from django.db import (
@@ -23,6 +23,7 @@ from tests.embeddings import EmbeddingFailedError
 from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
+    from django.db.backends.base.base import BaseDatabaseWrapper
     from pytest_django import Settings
 
 
@@ -125,6 +126,22 @@ def source_keys_locked_by(queries: Iterable[Mapping[str, str]]) -> list[str]:
         if f"FROM {table}" in query["sql"] and "FOR UPDATE" in query["sql"]
         for match in key_lookup.finditer(query["sql"])
     ]
+
+
+def source_keys_locked_against(other_connection: "BaseDatabaseWrapper") -> list[str]:
+    """The sorted ``source_key`` of each source row ``other_connection`` cannot lock.
+
+    ``other_connection`` must be in autocommit mode, so that its probing locks
+    are released as soon as taken.
+    """
+    table = other_connection.ops.quote_name(Source._meta.db_table)
+    with other_connection.cursor() as cursor:
+        cursor.execute(f"SELECT source_key FROM {table}")
+        stored = {source_key for (source_key,) in cursor.fetchall()}
+        # FOR SHARE conflicts with the FOR UPDATE lock of a replacement.
+        cursor.execute(f"SELECT source_key FROM {table} FOR SHARE SKIP LOCKED")
+        unlocked = {source_key for (source_key,) in cursor.fetchall()}
+    return sorted(stored - unlocked)
 
 
 @pytest.mark.django_db
@@ -794,3 +811,36 @@ def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None
         (other_source.pk, "myXapp.page:1")
     ]
     assert stored_content(other_source) == content_before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_prune_outside_a_transaction_locks_the_sources_it_removes_before_deleting() -> (
+    None
+):
+    # A replacement locks a source row, then changes its documents; a prune
+    # deleting the source without that lock could delete documents while a
+    # replacement inserts new ones under it.
+    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+    # A connection of its own sees only what is committed, and contends for
+    # row locks like another process.
+    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
+    locked_at_first_delete: list[list[str]] = []
+
+    def probe_locks_before_first_delete(
+        execute: Callable[[str, Any, bool, dict[str, Any]], Any],
+        sql: str,
+        params: Any,
+        many: bool,
+        context: dict[str, Any],
+    ) -> Any:
+        if sql.startswith("DELETE") and not locked_at_first_delete:
+            locked_at_first_delete.append(source_keys_locked_against(other_connection))
+        return execute(sql, params, many, context)
+
+    try:
+        with connection.execute_wrapper(probe_locks_before_first_delete):
+            Indexer().prune("faq", set())
+    finally:
+        other_connection.close()
+
+    assert locked_at_first_delete == [["faq:1", "faq:2"]]
