@@ -1,10 +1,12 @@
 """Indexing of documents into the storage models."""
 
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
 from django.db import transaction
 from django.db.models import QuerySet
+from django.db.models.functions import Collate
 
 from django_minimal_rag.chunking import split_text
 from django_minimal_rag.documents import Document as DocumentProtocol
@@ -18,13 +20,16 @@ MODEL_LABEL_SEPARATOR = ":"
 class Indexer:
     """Stores documents, chunks and embeddings."""
 
-    def prune(self, prefix: str, keep: Set[str]) -> None:
-        """Remove the sources of the model label ``prefix`` that are not kept."""
+    def prune(self, model_label: str, kept_keys: AbstractSet[str]) -> None:
+        """Remove the sources of ``model_label`` whose key is not in ``kept_keys``.
+
+        ``model_label`` is the part of a source key before the separator.
+        """
         model_sources = Source.objects.filter(
-            source_key__startswith=f"{prefix}{MODEL_LABEL_SEPARATOR}"
+            source_key__startswith=f"{model_label}{MODEL_LABEL_SEPARATOR}"
         )
         with transaction.atomic():
-            _delete_sources(model_sources.exclude(source_key__in=keep))
+            _delete_sources(model_sources.exclude(source_key__in=kept_keys))
 
     @transaction.atomic
     def replace(self, groups: Mapping[str, Sequence[DocumentProtocol]]) -> None:
@@ -109,14 +114,16 @@ def _delete_sources(sources: QuerySet[Source]) -> None:
 
 
 def _lock_sources(sources: QuerySet[Source]) -> None:
-    """Lock the rows of ``sources`` one by one, in the order replace() uses.
+    """Lock the rows of ``sources`` in one query, in the order replace() uses.
 
     Must run in a transaction.
     """
-    # Sorted by Python, as replace() sorts, not by the database collation.
-    for source_key in sorted(sources.values_list("source_key", flat=True)):
-        # Evaluating the queryset is what takes the lock.
-        list(Source.objects.select_for_update().filter(source_key=source_key))
+    # replace() sorts the keys as Python does, by code point. The "C" collation
+    # compares bytes, which for UTF-8 is code-point order; the database's
+    # default collation may order them otherwise.
+    in_python_order = Collate("source_key", "C")
+    # Evaluating the queryset is what takes the locks.
+    list(sources.select_for_update().order_by(in_python_order))
 
 
 def _stored_vectors(source: Source, embedding_model: str) -> dict[str, Any]:
