@@ -1,14 +1,15 @@
 """Retrieval of indexed chunks."""
 
 from collections.abc import Collection
-from typing import Any
+
+from django_minimal_rag.models import Chunk
 
 
 def retrieve(
-    query: str,  # noqa: ARG001 - not used yet, the first test needs no query
+    query: str,  # noqa: ARG001 - not used yet, the tests so far need no query
     *,
     permissions: Collection[str],  # noqa: ARG001 - idem
     max_distance: float,  # noqa: ARG001 - idem
-) -> list[Any]:
+) -> list[Chunk]:
     """Return the chunks relevant to ``query``."""
-    return []
+    return list(Chunk.objects.all())
