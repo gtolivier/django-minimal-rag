@@ -349,3 +349,14 @@ def test_retrieve_returns_a_chunk_only_to_a_reader_holding_all_its_permissions(
 
     assert [chunk.text for chunk in retrieved_by_full_reader] == [chunk_text]
     assert retrieved_by_partial_reader == []
+
+
+@pytest.mark.django_db
+def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="limit"):
+        retrieve(
+            "What are the opening hours?",
+            permissions=frozenset(),
+            max_distance=1.0,
+            limit=0,
+        )
