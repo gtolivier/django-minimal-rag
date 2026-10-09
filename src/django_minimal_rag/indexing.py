@@ -25,7 +25,7 @@ class Indexer:
         """Remove the sources of ``model_label`` whose key is not in ``kept_keys``.
 
         ``model_label`` is the part of a source key before the separator.
-        Raise ``ValueError`` if it is empty.
+        Raise ``ValueError`` if it is empty or holds the separator.
         """
         _check_model_label(model_label)
         # kept_keys may hold every instance of a model: sent to SQL, it could go
@@ -103,7 +103,7 @@ def _check_source_keys(source_key: str, documents: Sequence[DocumentProtocol]) -
 
 
 def _check_model_label(model_label: str) -> None:
-    """Raise ``ValueError`` if ``model_label`` is empty."""
+    """Raise ``ValueError`` if ``model_label`` is empty or holds the separator."""
     if not model_label:
         message = "The model label must not be empty"
         raise ValueError(message)
