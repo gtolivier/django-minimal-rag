@@ -46,5 +46,6 @@ class Document(Protocol):
     def permissions(self) -> AbstractSet[str]:
         """Permission names, as `app_label.codename`.
 
-        What they require of a reader is not settled yet.
+        A reader must hold all of them to read the document; an empty set
+        makes it readable by everyone.
         """

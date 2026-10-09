@@ -19,7 +19,7 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 ## Status
 
 Pre-alpha. Only the document Protocol, chunking, the storage models, the
-embedding backend setting and indexing exist so far: see
+embedding backend setting, indexing and retrieval exist so far: see
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -198,6 +198,43 @@ Indexer().prune("faq", {"faq:1", "faq:3"})
   replacement sharing sources do not deadlock.
 
 `replace()` and `prune()` form django-model-rag's output Protocol.
+
+## Retrieval
+
+`django_minimal_rag.retrieval.retrieve(question, *, permissions,
+max_distance, limit=5)` returns the indexed chunks nearest to a question
+that the reader may read:
+
+```python
+chunks = retrieve(
+    "When does the shop open?",
+    permissions=request.user.get_all_permissions(),
+    max_distance=0.4,
+)
+```
+
+- The question is embedded by the backend `MINIMAL_RAG_EMBEDDINGS`
+  configures, and compared only to the chunks that backend's model
+  embedded: chunks left by another model, whatever their dimension, are
+  ignored until they are re-indexed.
+- Chunks are ordered nearest first by cosine distance, and at most `limit`
+  of them are returned. `max_distance` is the relevance threshold, passed
+  on each call: a chunk farther from the question is left out, a chunk
+  exactly at it is kept. With none left, the result is empty.
+- `permissions` is the set of permission names the reader holds
+  (`app_label.codename`, as `get_all_permissions()` returns them). A chunk
+  is returned only if the reader holds every permission of its document;
+  a document without permissions is readable by everyone. The filtering is
+  part of the vector query, so chunks the reader may not read never take
+  the place of chunks they may.
+- Each result is a frozen `RetrievedChunk` of plain values: its `text`,
+  its document's `title`, `url` and `source_key`, and its `distance` to the
+  question. They come from a single query.
+- `ValueError` is raised when `limit` is below 1, and when the backend
+  returns another number of vectors than one for the question.
+
+There is no vector index yet: each call compares the question to every
+chunk of the current model the reader may read.
 
 ## Requirements
 
