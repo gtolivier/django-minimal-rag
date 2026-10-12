@@ -42,15 +42,14 @@ def answer(
 
     Return None, without calling the LLM, when no chunk is near enough.
     """
+    llm = get_llm()
     chunks = retrieve(
         question, permissions=permissions, max_distance=max_distance, limit=limit
     )
     if not chunks:
         return None
     return Answer(
-        text=get_llm().complete(
-            _build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS
-        ),
+        text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
         citations=_cite(chunks),
     )
 
