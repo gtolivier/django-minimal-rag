@@ -273,6 +273,61 @@ def test_answer_gives_the_llm_the_document_title_and_extract_in_elements(
 
 
 @pytest.mark.django_db
+def test_answer_gives_the_llm_the_chunks_of_one_document_in_one_document_element(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    question = "When does the shop open?"
+    weekday_text = "The shop opens at nine from Monday to Friday."
+    saturday_text = "On Saturdays the shop opens at ten."
+    sunday_text = "The shop is closed on Sundays."
+    # Cosine distances to the question: weekday 0.005, saturday 0.106 and
+    # sunday 0.293. Weekday and sunday are chunks of the same document, so
+    # its chunks come before and after the other document's.
+    use_chosen_embeddings(
+        settings,
+        {
+            question: [1.0, 0.0],
+            weekday_text: [1.0, 0.1],
+            saturday_text: [1.0, 0.5],
+            sunday_text: [1.0, 1.0],
+        },
+    )
+    week = Citation(
+        title="Week schedule",
+        url="https://example.com/hours/week/",
+        source_key="page:1",
+    )
+    saturday = Citation(
+        title="Saturday schedule",
+        url="https://example.com/hours/saturday/",
+        source_key="page:2",
+    )
+    week_pages = [page_cited_as(week, text) for text in (weekday_text, sunday_text)]
+    saturday_page = page_cited_as(saturday, saturday_text)
+    Indexer().replace(
+        {week.source_key: week_pages, saturday.source_key: [saturday_page]}
+    )
+
+    answer(question, permissions=frozenset(), max_distance=0.5)
+
+    [(prompt, _system)] = llm_calls
+    assert prompt == "\n".join(
+        [
+            "<document>",
+            f"<title>{week.title}</title>",
+            f"<extract>{weekday_text}</extract>",
+            f"<extract>{sunday_text}</extract>",
+            "</document>",
+            "<document>",
+            f"<title>{saturday.title}</title>",
+            f"<extract>{saturday_text}</extract>",
+            "</document>",
+            f"<question>{question}</question>",
+        ]
+    )
+
+
+@pytest.mark.django_db
 def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
