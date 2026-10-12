@@ -18,8 +18,9 @@ Django app, and it requires PostgreSQL with the pgvector extension.
 
 ## Status
 
-Pre-alpha. Only the document Protocol, chunking, the storage models, the
-embedding backend setting, indexing and retrieval exist so far: see
+Pre-alpha. The document Protocol, chunking, the storage models, the
+embedding and LLM backend settings, indexing, retrieval and cited answers
+exist; no real embedding model or LLM ships with the package. See
 [ROADMAP.md](ROADMAP.md) for the planned architecture, the decisions
 already made and the features to come.
 
@@ -245,6 +246,68 @@ chunks = retrieve(
 
 There is no vector index yet: each call compares the question to every
 chunk of the current model the reader may read.
+
+## LLM
+
+The project chooses its LLM as it chooses its embedding model: the package
+ships none. Name a backend class in the `MINIMAL_RAG_LLM` setting, with the
+keyword arguments to build it with:
+
+```python
+MINIMAL_RAG_LLM = {
+    "BACKEND": "myproject.llm.AnthropicLLM",
+    "OPTIONS": {"model": "claude-sonnet-5-5"},
+}
+```
+
+`django_minimal_rag.llm.get_llm()` builds `BACKEND(**OPTIONS)` anew on
+every call, and raises `ImproperlyConfigured` in the same cases as
+`get_embeddings()`.
+
+A backend is any class shaped like `django_minimal_rag.llm.LLM`, a
+`typing.Protocol` with one method: `complete(prompt, *, system)`, which
+takes the prompt and the system prompt (`str`) and returns the answer's
+text (`str`).
+
+`django_minimal_rag.llm.FakeLLM` is a backend for tests: it answers with
+the prompt it was given, so a test sees what the LLM was sent.
+
+## Answering
+
+`django_minimal_rag.answering.answer(question, *, permissions,
+max_distance, limit=5)` answers a question from the chunks `retrieve()`
+returns for the same arguments:
+
+```python
+result = answer(
+    "When does the shop open?",
+    permissions=request.user.get_all_permissions(),
+    max_distance=0.4,
+)
+if result is None:
+    ...  # nothing indexed is near enough to the question
+else:
+    result.text  # the LLM's answer
+    for citation in result.citations:
+        citation.title, citation.url, citation.source_key
+```
+
+- With no chunk within `max_distance`, it returns `None` and the LLM is
+  not called: there is no answer from the LLM's own knowledge.
+- Otherwise the LLM backend `MINIMAL_RAG_LLM` configures is called once.
+  Its system prompt tells it to answer only from the extracts given, to say
+  so when they do not hold the answer, and to answer in the language of
+  the question. Its prompt gives each chunk under its document's title,
+  nearest first, then the question. Neither is customizable yet.
+- The result is a frozen `Answer`: the LLM's `text`, as it wrote it, and
+  its `citations`, frozen `Citation`s of the `title`, `url` and
+  `source_key` of each document a chunk came from. They are built from the
+  chunks, not from what the LLM wrote: one per document, in the order of
+  its nearest chunk. Documents of the same source with a different title
+  or URL — translations, say — are cited separately. A document indexed
+  without a URL is cited with `url=""`: show its title alone.
+- Exceptions from the LLM backend propagate, as do those of `retrieve()`.
+  Answers are not streamed.
 
 ## Requirements
 
