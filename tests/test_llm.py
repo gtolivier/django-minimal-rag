@@ -47,3 +47,29 @@ def test_get_llm_without_the_setting_raises_improperly_configured(
 
     with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_LLM"):
         get_llm()
+
+
+@pytest.mark.parametrize(
+    "malformed_setting",
+    [
+        # A common mistake: the backend's dotted path given directly, instead
+        # of a mapping with that path under "BACKEND".
+        pytest.param("tests.llms.CannedLLM", id="not-a-mapping"),
+        pytest.param({"OPTIONS": {"reply": "Hello."}}, id="no-backend"),
+        # A common mistake: the backend class itself instead of its dotted path.
+        pytest.param({"BACKEND": CannedLLM}, id="non-string-backend"),
+        pytest.param({"BACKEND": "tests.llms.NoSuchLLM"}, id="unimportable-backend"),
+        pytest.param(
+            {"BACKEND": "tests.llms.CannedLLM", "OPTIONS": [("reply", "Hello.")]},
+            id="non-mapping-options",
+        ),
+    ],
+)
+def test_get_llm_with_a_malformed_setting_raises_improperly_configured(
+    settings: "Settings",
+    malformed_setting: object,
+) -> None:
+    settings.MINIMAL_RAG_LLM = malformed_setting
+
+    with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_LLM"):
+        get_llm()
