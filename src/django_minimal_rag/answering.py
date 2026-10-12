@@ -28,7 +28,7 @@ class Answer:
     """An answer to a question, as written by the LLM, with its citations."""
 
     text: str
-    citations: list[Citation]
+    citations: tuple[Citation, ...]
 
 
 def answer(
@@ -54,13 +54,13 @@ def answer(
     )
 
 
-def _cite(chunks: list[RetrievedChunk]) -> list[Citation]:
+def _cite(chunks: list[RetrievedChunk]) -> tuple[Citation, ...]:
     """Return one citation per document, in the order of its nearest chunk."""
     citations = (
         Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
         for chunk in chunks
     )
-    return list(dict.fromkeys(citations))
+    return tuple(dict.fromkeys(citations))
 
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
