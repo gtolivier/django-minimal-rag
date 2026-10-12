@@ -197,3 +197,29 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 
     [(_prompt, system)] = llm_calls
     assert system == ANSWER_INSTRUCTIONS
+
+
+@pytest.mark.django_db
+def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
+    settings: "Settings",
+) -> None:
+    secret_text = "The shop opens at eight for staff."
+    public_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    # Cosine distances to the question: secret 0.0, public 0.2.
+    use_chosen_embeddings(
+        settings,
+        {secret_text: [1.0, 0.0], public_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    secret_page = replace(
+        public_page(secret_text), permissions=frozenset({"app.view_secret"})
+    )
+    Indexer().replace({"page:1": [secret_page, public_page(public_text)]})
+    llm_calls: list[tuple[str, str]] = []
+    use_recording_llm(settings, llm_calls)
+
+    answer(question, permissions=frozenset({"app.view_other"}), max_distance=1.0)
+
+    [(prompt, _system)] = llm_calls
+    assert public_text in prompt
+    assert secret_text not in prompt
