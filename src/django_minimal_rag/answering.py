@@ -29,5 +29,5 @@ def answer(
     chunks = retrieve(question, permissions=permissions, max_distance=max_distance)
     if not chunks:
         return None
-    prompt = CHUNK_SEPARATOR.join(chunk.text for chunk in chunks)
+    prompt = CHUNK_SEPARATOR.join([*(chunk.text for chunk in chunks), question])
     return Answer(text=get_llm().complete(prompt, system=""))
