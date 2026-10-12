@@ -240,6 +240,39 @@ def test_answer_gives_the_llm_each_chunk_under_its_document_title(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("title", "chunk_text"),
+    [
+        ("Weekday schedule", "The shop opens at nine on weekdays."),
+        ("Shop FAQ", "On Saturdays the shop opens at ten."),
+    ],
+)
+def test_answer_gives_the_llm_the_document_title_and_extract_in_elements(
+    settings: "Settings",
+    llm_calls: list[tuple[str, str]],
+    title: str,
+    chunk_text: str,
+) -> None:
+    question = "When does the shop open?"
+    # Cosine distance of the chunk to the question: about 0.005.
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
+    Indexer().replace({"page:1": [replace(public_page(chunk_text), title=title)]})
+
+    answer(question, permissions=frozenset(), max_distance=0.1)
+
+    [(prompt, _system)] = llm_calls
+    assert prompt == "\n".join(
+        [
+            "<document>",
+            f"<title>{title}</title>",
+            f"<extract>{chunk_text}</extract>",
+            "</document>",
+            f"<question>{question}</question>",
+        ]
+    )
+
+
+@pytest.mark.django_db
 def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
