@@ -50,11 +50,19 @@ def answer(
         text=get_llm().complete(
             _build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS
         ),
-        citations=[
-            Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
-            for chunk in chunks
-        ],
+        citations=_cite(chunks),
     )
+
+
+def _cite(chunks: list[RetrievedChunk]) -> list[Citation]:
+    """Return one citation per document, in the order of its nearest chunk."""
+    citations = {
+        chunk.source_key: Citation(
+            title=chunk.title, url=chunk.url, source_key=chunk.source_key
+        )
+        for chunk in reversed(chunks)
+    }
+    return [citations[key] for key in dict.fromkeys(c.source_key for c in chunks)]
 
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
