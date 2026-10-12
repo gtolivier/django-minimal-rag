@@ -2,6 +2,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 
 from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
 from django_minimal_rag.indexing import Indexer
@@ -82,6 +83,19 @@ def test_answer_with_nothing_indexed_returns_none_without_calling_the_llm(
 
     assert answered is None
     assert llm_calls == []
+
+
+@pytest.mark.django_db
+def test_answer_without_the_llm_setting_raises_even_with_nothing_indexed(
+    settings: "Settings",
+) -> None:
+    # Set first so the deletion works whether or not the test settings
+    # define it: the setting is then missing for answer.
+    settings.MINIMAL_RAG_LLM = {"BACKEND": "tests.llms.CannedLLM"}
+    del settings.MINIMAL_RAG_LLM
+
+    with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_LLM"):
+        answer("What are the opening hours?", permissions=frozenset(), max_distance=2.0)
 
 
 @pytest.mark.django_db
