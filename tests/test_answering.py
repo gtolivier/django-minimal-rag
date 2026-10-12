@@ -328,6 +328,60 @@ def test_answer_gives_the_llm_the_chunks_of_one_document_in_one_document_element
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("other_title", "other_url"),
+    [
+        # A different title, the same URL.
+        ("Horaires d'ouverture", "https://example.com/opening-hours/"),
+        # The same title, a different URL.
+        ("Opening hours", "https://example.com/fr/opening-hours/"),
+    ],
+)
+def test_answer_gives_the_llm_each_document_of_one_source_its_own_document_element(
+    settings: "Settings",
+    llm_calls: list[tuple[str, str]],
+    other_title: str,
+    other_url: str,
+) -> None:
+    question = "When does the shop open?"
+    english_text = "The shop opens at nine on weekdays."
+    french_text = "La boutique ouvre à neuf heures en semaine."
+    # Cosine distances to the question: french 0.005, english 0.106. The
+    # french document is indexed second but given first.
+    use_chosen_embeddings(
+        settings,
+        {question: [1.0, 0.0], french_text: [1.0, 0.1], english_text: [1.0, 0.5]},
+    )
+    source_key = "app.note:3"
+    english = Citation(
+        title="Opening hours",
+        url="https://example.com/opening-hours/",
+        source_key=source_key,
+    )
+    french = Citation(title=other_title, url=other_url, source_key=source_key)
+    english_page = page_cited_as(english, english_text)
+    french_page = replace(page_cited_as(french, french_text), language="fr")
+    Indexer().replace({source_key: [english_page, french_page]})
+
+    answer(question, permissions=frozenset(), max_distance=0.5)
+
+    [(prompt, _system)] = llm_calls
+    assert prompt == "\n".join(
+        [
+            "<document>",
+            f"<title>{french.title}</title>",
+            f"<extract>{french_text}</extract>",
+            "</document>",
+            "<document>",
+            f"<title>{english.title}</title>",
+            f"<extract>{english_text}</extract>",
+            "</document>",
+            f"<question>{question}</question>",
+        ]
+    )
+
+
+@pytest.mark.django_db
 def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
