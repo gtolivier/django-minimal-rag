@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
 from django_minimal_rag.embeddings import BACKEND_KEY, OPTIONS_KEY
@@ -21,7 +22,11 @@ class LLM(Protocol):
 
 def get_llm() -> LLM:
     """Return the backend configured by the MINIMAL_RAG_LLM setting."""
-    config: Mapping[str, Any] = getattr(settings, LLM_SETTING)
+    try:
+        config: Mapping[str, Any] = getattr(settings, LLM_SETTING)
+    except AttributeError:
+        message = f"The {LLM_SETTING} setting is required."
+        raise ImproperlyConfigured(message) from None
     backend: type[LLM] = import_string(config[BACKEND_KEY])
     return backend(**config.get(OPTIONS_KEY, {}))
 
