@@ -102,3 +102,39 @@ def test_answer_gives_the_llm_a_prompt_holding_the_question(
 
     [(prompt, _system)] = llm_calls
     assert question in prompt
+
+
+@pytest.mark.django_db
+def test_answer_gives_the_llm_every_retrieved_chunk_nearest_first(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    nearest = "The shop opens at nine on weekdays."
+    middle = "On Saturdays the shop opens at ten."
+    farthest = "The shop is closed on Sundays."
+    # Cosine distances to the question: about 0.005, 0.106 and 0.293.
+    use_chosen_embeddings(
+        settings,
+        {
+            question: [1.0, 0.0],
+            nearest: [1.0, 0.1],
+            middle: [1.0, 0.5],
+            farthest: [1.0, 1.0],
+        },
+    )
+    # Indexed in an order other than their distance order.
+    Indexer().replace(
+        {
+            "page:1": [public_page(middle, source_key="page:1")],
+            "page:2": [public_page(farthest, source_key="page:2")],
+            "page:3": [public_page(nearest, source_key="page:3")],
+        }
+    )
+    llm_calls: list[tuple[str, str]] = []
+    use_recording_llm(settings, llm_calls)
+
+    answer(question, permissions=frozenset(), max_distance=0.5)
+
+    [(prompt, _system)] = llm_calls
+    assert all(text in prompt for text in (nearest, middle, farthest))
+    assert prompt.index(nearest) < prompt.index(middle) < prompt.index(farthest)
