@@ -7,6 +7,10 @@ from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n\n"
+ANSWER_INSTRUCTIONS = (
+    "Answer the question using only the document extracts given. "
+    "If they do not contain the answer, say so."
+)
 
 
 @dataclass(frozen=True)
@@ -29,7 +33,11 @@ def answer(
     chunks = retrieve(question, permissions=permissions, max_distance=max_distance)
     if not chunks:
         return None
-    return Answer(text=get_llm().complete(_build_prompt(question, chunks), system=""))
+    return Answer(
+        text=get_llm().complete(
+            _build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS
+        )
+    )
 
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
