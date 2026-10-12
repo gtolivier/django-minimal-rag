@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, answer
+from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
 from django_minimal_rag.indexing import Indexer
 from tests.documents import public_page
 from tests.embeddings import use_chosen_embeddings
@@ -260,3 +260,28 @@ def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
     [(prompt, _system)] = llm_calls
     assert public_text in prompt
     assert secret_text not in prompt
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("title", "url", "source_key"),
+    [
+        ("Weekday schedule", "https://example.com/hours/weekdays/", "page:12"),
+        ("Shop FAQ", "https://shop.example.org/faq/#hours", "faq:7"),
+    ],
+)
+def test_answer_cites_the_document_of_its_retrieved_chunk(
+    settings: "Settings", title: str, url: str, source_key: str
+) -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    question = "When does the shop open?"
+    # Cosine distance of the chunk to the question: about 0.005.
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
+    page = replace(public_page(chunk_text, source_key), title=title, url=url)
+    Indexer().replace({source_key: [page]})
+    use_canned_llm(settings, "The shop opens at nine.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.1)
+
+    assert answered is not None
+    assert answered.citations == [Citation(title=title, url=url, source_key=source_key)]
