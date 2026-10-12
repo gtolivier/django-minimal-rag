@@ -22,13 +22,18 @@ class LLM(Protocol):
 
 def get_llm() -> LLM:
     """Return the backend configured by the MINIMAL_RAG_LLM setting."""
-    try:
-        config: Mapping[str, Any] = getattr(settings, LLM_SETTING)
-    except AttributeError:
-        message = f"The {LLM_SETTING} setting is required."
-        raise ImproperlyConfigured(message) from None
+    config = _llm_config()
     backend: type[LLM] = import_string(config[BACKEND_KEY])
     return backend(**config.get(OPTIONS_KEY, {}))
+
+
+def _llm_config() -> Mapping[str, Any]:
+    try:
+        config: Mapping[str, Any] = getattr(settings, LLM_SETTING)
+    except AttributeError as error:
+        msg = f"The {LLM_SETTING} setting is required."
+        raise ImproperlyConfigured(msg) from error
+    return config
 
 
 class FakeLLM:
