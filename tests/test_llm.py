@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING
 
+import pytest
+from django.core.exceptions import ImproperlyConfigured
+
 from django_minimal_rag.llm import FakeLLM, get_llm
 from tests.llms import CannedLLM
 
@@ -32,3 +35,15 @@ def test_get_llm_builds_the_backend_of_the_setting_with_its_options(
         llm.complete("What is a vector?", system="Answer briefly.")
         == "A vector is a list of numbers."
     )
+
+
+def test_get_llm_without_the_setting_raises_improperly_configured(
+    settings: "Settings",
+) -> None:
+    # Set first so the deletion works whether or not the test settings
+    # define it: the setting is then missing for get_llm.
+    settings.MINIMAL_RAG_LLM = {"BACKEND": "tests.llms.CannedLLM"}
+    del settings.MINIMAL_RAG_LLM
+
+    with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_LLM"):
+        get_llm()
