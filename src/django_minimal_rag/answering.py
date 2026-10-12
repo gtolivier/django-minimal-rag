@@ -56,11 +56,12 @@ def answer(
 
 def _cite(chunks: list[RetrievedChunk]) -> tuple[Citation, ...]:
     """Return one citation per document, in the order of its nearest chunk."""
-    citations = (
-        Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
-        for chunk in chunks
-    )
-    return tuple(dict.fromkeys(citations))
+    return tuple(dict.fromkeys(_citation(chunk) for chunk in chunks))
+
+
+def _citation(chunk: RetrievedChunk) -> Citation:
+    """Return the document ``chunk`` comes from."""
+    return Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
 
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
@@ -80,10 +81,9 @@ def _group_by_document(
     chunks: list[RetrievedChunk],
 ) -> list[list[RetrievedChunk]]:
     """Return the chunks of each document, in the order of its nearest chunk."""
-    by_document: dict[tuple[str, str, str], list[RetrievedChunk]] = {}
+    by_document: dict[Citation, list[RetrievedChunk]] = {}
     for chunk in chunks:
-        key = (chunk.source_key, chunk.title, chunk.url)
-        by_document.setdefault(key, []).append(chunk)
+        by_document.setdefault(_citation(chunk), []).append(chunk)
     return list(by_document.values())
 
 
