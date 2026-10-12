@@ -5,7 +5,7 @@ import pytest
 
 from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
 from django_minimal_rag.indexing import Indexer
-from tests.documents import public_page
+from tests.documents import SampleDocument, public_page
 from tests.embeddings import use_chosen_embeddings
 
 if TYPE_CHECKING:
@@ -15,12 +15,15 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.usefixtures("fake_embeddings")
 
 
-def use_recording_llm(settings: "Settings", calls: list[tuple[str, str]]) -> None:
-    """Configure ``RecordingLLM``, appending each ``(prompt, system)`` to ``calls``."""
+@pytest.fixture
+def llm_calls(settings: "Settings") -> list[tuple[str, str]]:
+    """Configure ``RecordingLLM`` and return the ``(prompt, system)`` it records."""
+    calls: list[tuple[str, str]] = []
     settings.MINIMAL_RAG_LLM = {
         "BACKEND": "tests.llms.RecordingLLM",
         "OPTIONS": {"calls": calls},
     }
+    return calls
 
 
 def use_canned_llm(settings: "Settings", reply: str) -> None:
@@ -31,13 +34,48 @@ def use_canned_llm(settings: "Settings", reply: str) -> None:
     }
 
 
+def index_three_chunks_near(
+    settings: "Settings", question: str
+) -> tuple[str, str, str]:
+    """Index three chunks near ``question``, each in its own public page.
+
+    Return their texts nearest first. The cosine distances to the question
+    are about 0.005, 0.106 and 0.293; the chunks are indexed in an order
+    other than their distance order.
+    """
+    nearest = "The shop opens at nine on weekdays."
+    middle = "On Saturdays the shop opens at ten."
+    farthest = "The shop is closed on Sundays."
+    use_chosen_embeddings(
+        settings,
+        {
+            question: [1.0, 0.0],
+            nearest: [1.0, 0.1],
+            middle: [1.0, 0.5],
+            farthest: [1.0, 1.0],
+        },
+    )
+    Indexer().replace(
+        {
+            "page:1": [public_page(middle, source_key="page:1")],
+            "page:2": [public_page(farthest, source_key="page:2")],
+            "page:3": [public_page(nearest, source_key="page:3")],
+        }
+    )
+    return nearest, middle, farthest
+
+
+def page_cited_as(citation: Citation, text: str) -> SampleDocument:
+    """A public page holding ``text``, from the document ``citation`` names."""
+    return replace(
+        public_page(text, citation.source_key), title=citation.title, url=citation.url
+    )
+
+
 @pytest.mark.django_db
 def test_answer_with_nothing_indexed_returns_none_without_calling_the_llm(
-    settings: "Settings",
+    llm_calls: list[tuple[str, str]],
 ) -> None:
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
-
     answered = answer(
         "What are the opening hours?", permissions=frozenset(), max_distance=2.0
     )
@@ -48,15 +86,13 @@ def test_answer_with_nothing_indexed_returns_none_without_calling_the_llm(
 
 @pytest.mark.django_db
 def test_answer_with_only_a_chunk_beyond_max_distance_returns_none_without_llm(
-    settings: "Settings",
+    settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
     question = "Where is the shop?"
     # Cosine distance of the chunk to the question: 1.0, the vectors are orthogonal.
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [0.0, 1.0]})
     Indexer().replace({"page:1": [public_page(chunk_text)]})
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
 
     answered = answer(question, permissions=frozenset(), max_distance=0.5)
 
@@ -90,14 +126,12 @@ def test_answer_with_a_chunk_near_the_question_returns_the_llm_reply_as_its_text
     "question", ["When does the shop open?", "Is the shop open on weekdays?"]
 )
 def test_answer_gives_the_llm_a_prompt_holding_the_question(
-    settings: "Settings", question: str
+    settings: "Settings", llm_calls: list[tuple[str, str]], question: str
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
     # Cosine distance of the chunk to the question: about 0.005.
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
     Indexer().replace({"page:1": [public_page(chunk_text)]})
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
 
     answer(question, permissions=frozenset(), max_distance=0.1)
 
@@ -107,32 +141,10 @@ def test_answer_gives_the_llm_a_prompt_holding_the_question(
 
 @pytest.mark.django_db
 def test_answer_gives_the_llm_every_retrieved_chunk_nearest_first(
-    settings: "Settings",
+    settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     question = "When does the shop open?"
-    nearest = "The shop opens at nine on weekdays."
-    middle = "On Saturdays the shop opens at ten."
-    farthest = "The shop is closed on Sundays."
-    # Cosine distances to the question: about 0.005, 0.106 and 0.293.
-    use_chosen_embeddings(
-        settings,
-        {
-            question: [1.0, 0.0],
-            nearest: [1.0, 0.1],
-            middle: [1.0, 0.5],
-            farthest: [1.0, 1.0],
-        },
-    )
-    # Indexed in an order other than their distance order.
-    Indexer().replace(
-        {
-            "page:1": [public_page(middle, source_key="page:1")],
-            "page:2": [public_page(farthest, source_key="page:2")],
-            "page:3": [public_page(nearest, source_key="page:3")],
-        }
-    )
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
+    nearest, middle, farthest = index_three_chunks_near(settings, question)
 
     answer(question, permissions=frozenset(), max_distance=0.5)
 
@@ -143,32 +155,11 @@ def test_answer_gives_the_llm_every_retrieved_chunk_nearest_first(
 
 @pytest.mark.django_db
 def test_answer_gives_the_llm_only_the_limit_nearest_chunks(
-    settings: "Settings",
+    settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     question = "When does the shop open?"
-    nearest = "The shop opens at nine on weekdays."
-    middle = "On Saturdays the shop opens at ten."
-    farthest = "The shop is closed on Sundays."
-    # Cosine distances to the question: about 0.005, 0.106 and 0.293, all
-    # within max_distance.
-    use_chosen_embeddings(
-        settings,
-        {
-            question: [1.0, 0.0],
-            nearest: [1.0, 0.1],
-            middle: [1.0, 0.5],
-            farthest: [1.0, 1.0],
-        },
-    )
-    Indexer().replace(
-        {
-            "page:1": [public_page(middle, source_key="page:1")],
-            "page:2": [public_page(farthest, source_key="page:2")],
-            "page:3": [public_page(nearest, source_key="page:3")],
-        }
-    )
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
+    # All three within max_distance.
+    nearest, middle, farthest = index_three_chunks_near(settings, question)
 
     answer(question, permissions=frozenset(), max_distance=0.5, limit=2)
 
@@ -180,7 +171,7 @@ def test_answer_gives_the_llm_only_the_limit_nearest_chunks(
 
 @pytest.mark.django_db
 def test_answer_gives_the_llm_each_chunk_under_its_document_title(
-    settings: "Settings",
+    settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     question = "When does the shop open?"
     weekday_text = "The shop opens at nine from Monday to Friday."
@@ -202,8 +193,6 @@ def test_answer_gives_the_llm_each_chunk_under_its_document_title(
             ],
         }
     )
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
 
     answer(question, permissions=frozenset(), max_distance=0.5)
 
@@ -220,15 +209,13 @@ def test_answer_gives_the_llm_each_chunk_under_its_document_title(
 
 @pytest.mark.django_db
 def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
-    settings: "Settings",
+    settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
     question = "When does the shop open?"
     # Cosine distance of the chunk to the question: about 0.005.
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
     Indexer().replace({"page:1": [public_page(chunk_text)]})
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
 
     answer(question, permissions=frozenset(), max_distance=0.1)
 
@@ -238,7 +225,7 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 
 @pytest.mark.django_db
 def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
-    settings: "Settings",
+    settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     secret_text = "The shop opens at eight for staff."
     public_text = "The shop opens at nine."
@@ -252,8 +239,6 @@ def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
         public_page(secret_text), permissions=frozenset({"app.view_secret"})
     )
     Indexer().replace({"page:1": [secret_page, public_page(public_text)]})
-    llm_calls: list[tuple[str, str]] = []
-    use_recording_llm(settings, llm_calls)
 
     answer(question, permissions=frozenset({"app.view_other"}), max_distance=1.0)
 
@@ -317,15 +302,8 @@ def test_answer_cites_each_document_once_in_the_order_of_its_nearest_chunk(
         url="https://example.com/hours/saturday/",
         source_key="page:2",
     )
-    week_pages = [
-        replace(public_page(text, week.source_key), title=week.title, url=week.url)
-        for text in (weekday_text, sunday_text)
-    ]
-    saturday_page = replace(
-        public_page(saturday_text, saturday.source_key),
-        title=saturday.title,
-        url=saturday.url,
-    )
+    week_pages = [page_cited_as(week, text) for text in (weekday_text, sunday_text)]
+    saturday_page = page_cited_as(saturday, saturday_text)
     Indexer().replace(
         {week.source_key: week_pages, saturday.source_key: [saturday_page]}
     )
@@ -361,15 +339,8 @@ def test_answer_cites_each_document_of_one_source_with_its_own_title_and_url(
         url="https://example.com/fr/horaires/",
         source_key=source_key,
     )
-    english_page = replace(
-        public_page(english_text, source_key), title=english.title, url=english.url
-    )
-    french_page = replace(
-        public_page(french_text, source_key),
-        title=french.title,
-        url=french.url,
-        language="fr",
-    )
+    english_page = page_cited_as(english, english_text)
+    french_page = replace(page_cited_as(french, french_text), language="fr")
     Indexer().replace({source_key: [english_page, french_page]})
     use_canned_llm(settings, "The shop opens at nine.")
 
