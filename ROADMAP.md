@@ -216,14 +216,17 @@ implements.
   enough to depend on. Building the Django-native layer here is the point
   of the package.
 - **`answer()` builds on `retrieve()`, with a fixed prompt.**
-  `answer(question, *, permissions, max_distance, limit=5)` retrieves
-  the chunks, and returns `None` without calling the LLM when none is
-  within the threshold. Otherwise it sends the LLM a fixed system prompt
-  (answer only from the extracts, say so when they do not hold the
-  answer, answer in the language of the question) and a prompt listing
-  each chunk under its document's title, nearest first, then the
-  question. The prompt is not customizable, and answers are not streamed,
-  until a project needs it.
+  `answer(question, *, permissions, max_distance, limit=5)` resolves the
+  LLM first, so a missing setting fails even when nothing is indexed, then
+  retrieves the chunks, and returns `None` without calling the LLM when
+  none is within the threshold. Otherwise it sends the LLM a fixed system
+  prompt (answer only from the extracts, say so when they do not hold the
+  answer, answer in the language of the question) and a prompt whose parts
+  are delimited by tags, so that a chunk's own text cannot pass for a
+  title or the question: one `<document>` per document, in the order of
+  its nearest chunk, with its `<title>` and its `<extract>`s nearest
+  first, then the `<question>`. The prompt is not customizable, and
+  answers are not streamed, until a project needs it.
 - **Citations are built by the package, not by the LLM.** An `Answer`
   holds the LLM's `text` and its `citations`: one `Citation(title, url,
   source_key)` per document whose chunks were sent, in the order of its

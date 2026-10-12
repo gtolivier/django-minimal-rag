@@ -292,15 +292,19 @@ else:
         citation.title, citation.url, citation.source_key
 ```
 
+- The LLM backend is resolved first: without a valid `MINIMAL_RAG_LLM`,
+  it raises `ImproperlyConfigured` even when nothing is indexed.
 - With no chunk within `max_distance`, it returns `None` and the LLM is
   not called: there is no answer from the LLM's own knowledge.
-- Otherwise the LLM backend `MINIMAL_RAG_LLM` configures is called once.
-  Its system prompt tells it to answer only from the extracts given, to say
-  so when they do not hold the answer, and to answer in the language of
-  the question. Its prompt gives each chunk under its document's title,
-  nearest first, then the question. Neither is customizable yet.
+- Otherwise the LLM is called once. Its system prompt tells it to answer
+  only from the extracts given, to say so when they do not hold the
+  answer, and to answer in the language of the question. Its prompt
+  delimits each part with a tag: one `<document>` element per document,
+  in the order of its nearest chunk, holding its `<title>` then one
+  `<extract>` per chunk, nearest first; then the `<question>`. Neither is
+  customizable yet.
 - The result is a frozen `Answer`: the LLM's `text`, as it wrote it, and
-  its `citations`, frozen `Citation`s of the `title`, `url` and
+  its `citations`, a tuple of frozen `Citation`s of the `title`, `url` and
   `source_key` of each document a chunk came from. They are built from the
   chunks, not from what the LLM wrote: one per document, in the order of
   its nearest chunk. Documents of the same source with a different title
