@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, replace
 from typing import TYPE_CHECKING
 
@@ -8,36 +7,18 @@ from django.db.models import F
 from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk
 from django_minimal_rag.retrieval import retrieve
-from tests.documents import SampleDocument
-from tests.embeddings import use_fake_embeddings, use_miscounting_embeddings
+from tests.documents import public_page
+from tests.embeddings import (
+    use_chosen_embeddings,
+    use_fake_embeddings,
+    use_miscounting_embeddings,
+)
 
 if TYPE_CHECKING:
     from pytest_django import Settings
 
 
 pytestmark = pytest.mark.usefixtures("fake_embeddings")
-
-
-def use_chosen_embeddings(
-    settings: "Settings", vectors: Mapping[str, list[float]]
-) -> None:
-    """Configure ``ChosenEmbeddings``, giving each text of ``vectors`` its vector."""
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.ChosenEmbeddings",
-        "OPTIONS": {"vectors": vectors},
-    }
-
-
-def public_page(text: str, source_key: str = "page:1") -> SampleDocument:
-    """A public page of the host project, in English, holding ``text``."""
-    return SampleDocument(
-        text=text,
-        source_key=source_key,
-        title="Opening hours",
-        url="https://example.com/opening-hours/",
-        language="en",
-        permissions=frozenset(),
-    )
 
 
 def index_public_pages(*texts: str) -> None:
