@@ -285,3 +285,53 @@ def test_answer_cites_the_document_of_its_retrieved_chunk(
 
     assert answered is not None
     assert answered.citations == [Citation(title=title, url=url, source_key=source_key)]
+
+
+@pytest.mark.django_db
+def test_answer_cites_each_document_once_in_the_order_of_its_nearest_chunk(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    weekday_text = "The shop opens at nine from Monday to Friday."
+    saturday_text = "On Saturdays the shop opens at ten."
+    sunday_text = "The shop is closed on Sundays."
+    # Cosine distances to the question: weekday 0.005, saturday 0.106 and
+    # sunday 0.293. Weekday and sunday are chunks of the same document, so
+    # its chunks come before and after the other document's.
+    use_chosen_embeddings(
+        settings,
+        {
+            question: [1.0, 0.0],
+            weekday_text: [1.0, 0.1],
+            saturday_text: [1.0, 0.5],
+            sunday_text: [1.0, 1.0],
+        },
+    )
+    week = Citation(
+        title="Week schedule",
+        url="https://example.com/hours/week/",
+        source_key="page:1",
+    )
+    saturday = Citation(
+        title="Saturday schedule",
+        url="https://example.com/hours/saturday/",
+        source_key="page:2",
+    )
+    week_pages = [
+        replace(public_page(text, week.source_key), title=week.title, url=week.url)
+        for text in (weekday_text, sunday_text)
+    ]
+    saturday_page = replace(
+        public_page(saturday_text, saturday.source_key),
+        title=saturday.title,
+        url=saturday.url,
+    )
+    Indexer().replace(
+        {week.source_key: week_pages, saturday.source_key: [saturday_page]}
+    )
+    use_canned_llm(settings, "The shop opens at nine, at ten on Saturdays.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.5)
+
+    assert answered is not None
+    assert answered.citations == [week, saturday]
