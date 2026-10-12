@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
-PROMPT_PART_SEPARATOR = "\n\n"
+PROMPT_PART_SEPARATOR = "\n"
 ANSWER_INSTRUCTIONS = (
     "Answer the question using only the document extracts given. "
     "If they do not contain the answer, say so. "
@@ -67,7 +67,19 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
     """Return each chunk under its document's title, then ``question`` in a tag."""
     return PROMPT_PART_SEPARATOR.join(
         [
-            *(f"{chunk.title}\n{chunk.text}" for chunk in chunks),
+            *(_document(chunk) for chunk in chunks),
             f"<question>{question}</question>",
+        ]
+    )
+
+
+def _document(chunk: RetrievedChunk) -> str:
+    """Return ``chunk`` as a document element: its title, then its extract."""
+    return PROMPT_PART_SEPARATOR.join(
+        [
+            "<document>",
+            f"<title>{chunk.title}</title>",
+            f"<extract>{chunk.text}</extract>",
+            "</document>",
         ]
     )
