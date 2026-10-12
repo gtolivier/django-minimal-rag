@@ -335,3 +335,45 @@ def test_answer_cites_each_document_once_in_the_order_of_its_nearest_chunk(
 
     assert answered is not None
     assert answered.citations == [week, saturday]
+
+
+@pytest.mark.django_db
+def test_answer_cites_each_document_of_one_source_with_its_own_title_and_url(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    english_text = "The shop opens at nine on weekdays."
+    french_text = "La boutique ouvre à neuf heures en semaine."
+    # Cosine distances to the question: french 0.005, english 0.106. The
+    # french document is indexed second but cited first.
+    use_chosen_embeddings(
+        settings,
+        {question: [1.0, 0.0], french_text: [1.0, 0.1], english_text: [1.0, 0.5]},
+    )
+    source_key = "app.note:3"
+    english = Citation(
+        title="Opening hours",
+        url="https://example.com/en/opening-hours/",
+        source_key=source_key,
+    )
+    french = Citation(
+        title="Horaires d'ouverture",
+        url="https://example.com/fr/horaires/",
+        source_key=source_key,
+    )
+    english_page = replace(
+        public_page(english_text, source_key), title=english.title, url=english.url
+    )
+    french_page = replace(
+        public_page(french_text, source_key),
+        title=french.title,
+        url=french.url,
+        language="fr",
+    )
+    Indexer().replace({source_key: [english_page, french_page]})
+    use_canned_llm(settings, "The shop opens at nine.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.5)
+
+    assert answered is not None
+    assert answered.citations == [french, english]
