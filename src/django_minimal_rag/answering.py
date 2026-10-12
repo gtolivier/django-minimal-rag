@@ -80,10 +80,11 @@ def _group_by_document(
     chunks: list[RetrievedChunk],
 ) -> list[list[RetrievedChunk]]:
     """Return the chunks of each document, in the order of its nearest chunk."""
-    by_source_key: dict[str, list[RetrievedChunk]] = {}
+    by_document: dict[tuple[str, str, str], list[RetrievedChunk]] = {}
     for chunk in chunks:
-        by_source_key.setdefault(chunk.source_key, []).append(chunk)
-    return list(by_source_key.values())
+        key = (chunk.source_key, chunk.title, chunk.url)
+        by_document.setdefault(key, []).append(chunk)
+    return list(by_document.values())
 
 
 def _document(chunks: list[RetrievedChunk]) -> str:
