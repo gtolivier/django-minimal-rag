@@ -64,22 +64,25 @@ def _cite(chunks: list[RetrievedChunk]) -> tuple[Citation, ...]:
 
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
-    """Return each chunk as a document element, then ``question`` in a tag."""
+    """Return each document as an element, then ``question`` in a tag."""
+    by_document: dict[str, list[RetrievedChunk]] = {}
+    for chunk in chunks:
+        by_document.setdefault(chunk.source_key, []).append(chunk)
     return PROMPT_PART_SEPARATOR.join(
         [
-            *(_document(chunk) for chunk in chunks),
+            *(_document(document) for document in by_document.values()),
             f"<question>{question}</question>",
         ]
     )
 
 
-def _document(chunk: RetrievedChunk) -> str:
-    """Return ``chunk`` as a document element: its title, then its extract."""
+def _document(chunks: list[RetrievedChunk]) -> str:
+    """Return the chunks of one document: its title, then its extracts."""
     return PROMPT_PART_SEPARATOR.join(
         [
             "<document>",
-            f"<title>{chunk.title}</title>",
-            f"<extract>{chunk.text}</extract>",
+            f"<title>{chunks[0].title}</title>",
+            *(f"<extract>{chunk.text}</extract>" for chunk in chunks),
             "</document>",
         ]
     )
