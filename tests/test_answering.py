@@ -142,6 +142,43 @@ def test_answer_gives_the_llm_every_retrieved_chunk_nearest_first(
 
 
 @pytest.mark.django_db
+def test_answer_gives_the_llm_only_the_limit_nearest_chunks(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    nearest = "The shop opens at nine on weekdays."
+    middle = "On Saturdays the shop opens at ten."
+    farthest = "The shop is closed on Sundays."
+    # Cosine distances to the question: about 0.005, 0.106 and 0.293, all
+    # within max_distance.
+    use_chosen_embeddings(
+        settings,
+        {
+            question: [1.0, 0.0],
+            nearest: [1.0, 0.1],
+            middle: [1.0, 0.5],
+            farthest: [1.0, 1.0],
+        },
+    )
+    Indexer().replace(
+        {
+            "page:1": [public_page(middle, source_key="page:1")],
+            "page:2": [public_page(farthest, source_key="page:2")],
+            "page:3": [public_page(nearest, source_key="page:3")],
+        }
+    )
+    llm_calls: list[tuple[str, str]] = []
+    use_recording_llm(settings, llm_calls)
+
+    answer(question, permissions=frozenset(), max_distance=0.5, limit=2)
+
+    [(prompt, _system)] = llm_calls
+    assert nearest in prompt
+    assert middle in prompt
+    assert farthest not in prompt
+
+
+@pytest.mark.django_db
 def test_answer_gives_the_llm_each_chunk_under_its_document_title(
     settings: "Settings",
 ) -> None:
