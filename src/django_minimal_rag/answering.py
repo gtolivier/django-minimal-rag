@@ -65,15 +65,25 @@ def _cite(chunks: list[RetrievedChunk]) -> tuple[Citation, ...]:
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
     """Return each document as an element, then ``question`` in a tag."""
-    by_document: dict[str, list[RetrievedChunk]] = {}
-    for chunk in chunks:
-        by_document.setdefault(chunk.source_key, []).append(chunk)
     return PROMPT_PART_SEPARATOR.join(
         [
-            *(_document(document) for document in by_document.values()),
+            *(
+                _document(document_chunks)
+                for document_chunks in _group_by_document(chunks)
+            ),
             f"<question>{question}</question>",
         ]
     )
+
+
+def _group_by_document(
+    chunks: list[RetrievedChunk],
+) -> list[list[RetrievedChunk]]:
+    """Return the chunks of each document, in the order of its nearest chunk."""
+    by_source_key: dict[str, list[RetrievedChunk]] = {}
+    for chunk in chunks:
+        by_source_key.setdefault(chunk.source_key, []).append(chunk)
+    return list(by_source_key.values())
 
 
 def _document(chunks: list[RetrievedChunk]) -> str:
