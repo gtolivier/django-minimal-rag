@@ -1,13 +1,31 @@
 """Answering questions from indexed chunks."""
 
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
+
+from django_minimal_rag.llm import get_llm
+from django_minimal_rag.retrieval import retrieve
+
+
+@dataclass(frozen=True)
+class Answer:
+    """An answer to a question, as written by the LLM."""
+
+    text: str
 
 
 def answer(
-    question: str,  # noqa: ARG001 - part of the public signature, not used yet
+    question: str,
     *,
-    permissions: AbstractSet[str],  # noqa: ARG001 - part of the public signature, not used yet
-    max_distance: float,  # noqa: ARG001 - part of the public signature, not used yet
-) -> str | None:
-    """Return None: nothing is indexed to answer from."""
-    return None
+    permissions: AbstractSet[str],
+    max_distance: float,
+) -> Answer | None:
+    """Return the LLM's answer from the chunks near ``question``.
+
+    Return None, without calling the LLM, when no chunk is near enough.
+    """
+    chunks = retrieve(question, permissions=permissions, max_distance=max_distance)
+    if not chunks:
+        return None
+    prompt = "\n\n".join(chunk.text for chunk in chunks)
+    return Answer(text=get_llm().complete(prompt, system=""))
