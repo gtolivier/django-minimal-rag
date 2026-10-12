@@ -283,7 +283,9 @@ def test_answer_cites_the_document_of_its_retrieved_chunk(
     answered = answer(question, permissions=frozenset(), max_distance=0.1)
 
     assert answered is not None
-    assert answered.citations == [Citation(title=title, url=url, source_key=source_key)]
+    assert answered.citations == (
+        Citation(title=title, url=url, source_key=source_key),
+    )
 
 
 @pytest.mark.django_db
@@ -326,7 +328,7 @@ def test_answer_cites_each_document_once_in_the_order_of_its_nearest_chunk(
     answered = answer(question, permissions=frozenset(), max_distance=0.5)
 
     assert answered is not None
-    assert answered.citations == [week, saturday]
+    assert answered.citations == (week, saturday)
 
 
 @pytest.mark.django_db
@@ -361,4 +363,19 @@ def test_answer_cites_each_document_of_one_source_with_its_own_title_and_url(
     answered = answer(question, permissions=frozenset(), max_distance=0.5)
 
     assert answered is not None
-    assert answered.citations == [french, english]
+    assert answered.citations == (french, english)
+
+
+@pytest.mark.django_db
+def test_answer_gives_its_citations_as_a_tuple(settings: "Settings") -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    question = "When does the shop open?"
+    # Cosine distance of the chunk to the question: about 0.005.
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
+    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    use_canned_llm(settings, "The shop opens at nine.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.1)
+
+    assert answered is not None
+    assert isinstance(answered.citations, tuple)
