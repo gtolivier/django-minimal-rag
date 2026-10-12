@@ -14,10 +14,20 @@ ANSWER_INSTRUCTIONS = (
 
 
 @dataclass(frozen=True)
+class Citation:
+    """The document a retrieved chunk comes from."""
+
+    title: str
+    url: str
+    source_key: str
+
+
+@dataclass(frozen=True)
 class Answer:
-    """An answer to a question, as written by the LLM."""
+    """An answer to a question, as written by the LLM, with its citations."""
 
     text: str
+    citations: list[Citation]
 
 
 def answer(
@@ -39,7 +49,11 @@ def answer(
     return Answer(
         text=get_llm().complete(
             _build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS
-        )
+        ),
+        citations=[
+            Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
+            for chunk in chunks
+        ],
     )
 
 
