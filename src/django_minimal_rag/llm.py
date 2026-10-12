@@ -6,6 +6,10 @@ from typing import Any, Protocol
 from django.conf import settings
 from django.utils.module_loading import import_string
 
+from django_minimal_rag.embeddings import BACKEND_KEY, OPTIONS_KEY
+
+LLM_SETTING = "MINIMAL_RAG_LLM"
+
 
 class LLM(Protocol):
     """What the package needs from an LLM backend."""
@@ -17,9 +21,9 @@ class LLM(Protocol):
 
 def get_llm() -> LLM:
     """Return the backend configured by the MINIMAL_RAG_LLM setting."""
-    config: Mapping[str, Any] = getattr(settings, "MINIMAL_RAG_LLM")  # noqa: B009 - the setting is a host project's, unknown to the django-stubs plugin
-    backend: type[LLM] = import_string(config["BACKEND"])
-    return backend(**config.get("OPTIONS", {}))
+    config: Mapping[str, Any] = getattr(settings, LLM_SETTING)
+    backend: type[LLM] = import_string(config[BACKEND_KEY])
+    return backend(**config.get(OPTIONS_KEY, {}))
 
 
 class FakeLLM:
