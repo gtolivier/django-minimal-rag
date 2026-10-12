@@ -4,7 +4,7 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 
 from django_minimal_rag.llm import FakeLLM, get_llm
-from tests.llms import CannedLLM
+from tests.llms import CannedLLM, remove_llm_setting, use_canned_llm
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -23,10 +23,7 @@ def test_fake_llm_answers_with_the_prompt_it_was_given() -> None:
 def test_get_llm_builds_the_backend_of_the_setting_with_its_options(
     settings: "Settings",
 ) -> None:
-    settings.MINIMAL_RAG_LLM = {
-        "BACKEND": "tests.llms.CannedLLM",
-        "OPTIONS": {"reply": "A vector is a list of numbers."},
-    }
+    use_canned_llm(settings, "A vector is a list of numbers.")
 
     llm = get_llm()
 
@@ -40,10 +37,7 @@ def test_get_llm_builds_the_backend_of_the_setting_with_its_options(
 def test_get_llm_without_the_setting_raises_improperly_configured(
     settings: "Settings",
 ) -> None:
-    # Set first so the deletion works whether or not the test settings
-    # define it: the setting is then missing for get_llm.
-    settings.MINIMAL_RAG_LLM = {"BACKEND": "tests.llms.CannedLLM"}
-    del settings.MINIMAL_RAG_LLM
+    remove_llm_setting(settings)
 
     with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_LLM"):
         get_llm()

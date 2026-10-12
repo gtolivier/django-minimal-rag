@@ -8,6 +8,7 @@ from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
 from django_minimal_rag.indexing import Indexer
 from tests.documents import SampleDocument, public_page
 from tests.embeddings import use_chosen_embeddings
+from tests.llms import remove_llm_setting, use_canned_llm
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -16,23 +17,12 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.usefixtures("fake_embeddings")
 
 
-@pytest.fixture
-def llm_calls(settings: "Settings") -> list[tuple[str, str]]:
-    """Configure ``RecordingLLM`` and return the ``(prompt, system)`` it records."""
-    calls: list[tuple[str, str]] = []
-    settings.MINIMAL_RAG_LLM = {
-        "BACKEND": "tests.llms.RecordingLLM",
-        "OPTIONS": {"calls": calls},
-    }
-    return calls
-
-
-def use_canned_llm(settings: "Settings", reply: str) -> None:
-    """Configure ``CannedLLM``, answering every prompt with ``reply``."""
-    settings.MINIMAL_RAG_LLM = {
-        "BACKEND": "tests.llms.CannedLLM",
-        "OPTIONS": {"reply": reply},
-    }
+def index_one_chunk_near(
+    settings: "Settings", question: str, page: SampleDocument
+) -> None:
+    """Index ``page`` as one chunk, at a cosine distance about 0.005 to ``question``."""
+    use_chosen_embeddings(settings, {page.text: [1.0, 0.0], question: [1.0, 0.1]})
+    Indexer().replace({page.source_key: [page]})
 
 
 def index_three_chunks_near(
@@ -73,6 +63,46 @@ def page_cited_as(citation: Citation, text: str) -> SampleDocument:
     )
 
 
+def index_week_and_saturday_schedules(
+    settings: "Settings", question: str
+) -> tuple[Citation, Citation, tuple[str, str, str]]:
+    """Index a week schedule of two chunks and a Saturday schedule of one.
+
+    Return the two documents' citations, week first, then the weekday,
+    saturday and sunday chunk texts. Their cosine distances to the question
+    are about 0.005, 0.106 and 0.293. Weekday and sunday are chunks of the
+    week schedule, so its chunks come before and after the other document's.
+    """
+    weekday_text = "The shop opens at nine from Monday to Friday."
+    saturday_text = "On Saturdays the shop opens at ten."
+    sunday_text = "The shop is closed on Sundays."
+    use_chosen_embeddings(
+        settings,
+        {
+            question: [1.0, 0.0],
+            weekday_text: [1.0, 0.1],
+            saturday_text: [1.0, 0.5],
+            sunday_text: [1.0, 1.0],
+        },
+    )
+    week = Citation(
+        title="Week schedule",
+        url="https://example.com/hours/week/",
+        source_key="page:1",
+    )
+    saturday = Citation(
+        title="Saturday schedule",
+        url="https://example.com/hours/saturday/",
+        source_key="page:2",
+    )
+    week_pages = [page_cited_as(week, text) for text in (weekday_text, sunday_text)]
+    saturday_page = page_cited_as(saturday, saturday_text)
+    Indexer().replace(
+        {week.source_key: week_pages, saturday.source_key: [saturday_page]}
+    )
+    return week, saturday, (weekday_text, saturday_text, sunday_text)
+
+
 @pytest.mark.django_db
 def test_answer_with_nothing_indexed_returns_none_without_calling_the_llm(
     llm_calls: list[tuple[str, str]],
@@ -89,10 +119,7 @@ def test_answer_with_nothing_indexed_returns_none_without_calling_the_llm(
 def test_answer_without_the_llm_setting_raises_even_with_nothing_indexed(
     settings: "Settings",
 ) -> None:
-    # Set first so the deletion works whether or not the test settings
-    # define it: the setting is then missing for answer.
-    settings.MINIMAL_RAG_LLM = {"BACKEND": "tests.llms.CannedLLM"}
-    del settings.MINIMAL_RAG_LLM
+    remove_llm_setting(settings)
 
     with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_LLM"):
         answer("What are the opening hours?", permissions=frozenset(), max_distance=2.0)
@@ -124,9 +151,7 @@ def test_answer_with_a_chunk_near_the_question_returns_the_llm_reply_as_its_text
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
     question = "When does the shop open?"
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_one_chunk_near(settings, question, public_page(chunk_text))
     use_canned_llm(settings, reply)
 
     answered = answer(question, permissions=frozenset(), max_distance=0.1)
@@ -143,9 +168,7 @@ def test_answer_gives_the_llm_a_prompt_holding_the_question(
     settings: "Settings", llm_calls: list[tuple[str, str]], question: str
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_one_chunk_near(settings, question, public_page(chunk_text))
 
     answer(question, permissions=frozenset(), max_distance=0.1)
 
@@ -161,9 +184,7 @@ def test_answer_gives_the_llm_a_prompt_ending_with_the_question_element(
     settings: "Settings", llm_calls: list[tuple[str, str]], question: str
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_one_chunk_near(settings, question, public_page(chunk_text))
 
     answer(question, permissions=frozenset(), max_distance=0.1)
 
@@ -254,9 +275,9 @@ def test_answer_gives_the_llm_the_document_title_and_extract_in_elements(
     chunk_text: str,
 ) -> None:
     question = "When does the shop open?"
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [replace(public_page(chunk_text), title=title)]})
+    index_one_chunk_near(
+        settings, question, replace(public_page(chunk_text), title=title)
+    )
 
     answer(question, permissions=frozenset(), max_distance=0.1)
 
@@ -277,35 +298,8 @@ def test_answer_gives_the_llm_the_chunks_of_one_document_in_one_document_element
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
     question = "When does the shop open?"
-    weekday_text = "The shop opens at nine from Monday to Friday."
-    saturday_text = "On Saturdays the shop opens at ten."
-    sunday_text = "The shop is closed on Sundays."
-    # Cosine distances to the question: weekday 0.005, saturday 0.106 and
-    # sunday 0.293. Weekday and sunday are chunks of the same document, so
-    # its chunks come before and after the other document's.
-    use_chosen_embeddings(
-        settings,
-        {
-            question: [1.0, 0.0],
-            weekday_text: [1.0, 0.1],
-            saturday_text: [1.0, 0.5],
-            sunday_text: [1.0, 1.0],
-        },
-    )
-    week = Citation(
-        title="Week schedule",
-        url="https://example.com/hours/week/",
-        source_key="page:1",
-    )
-    saturday = Citation(
-        title="Saturday schedule",
-        url="https://example.com/hours/saturday/",
-        source_key="page:2",
-    )
-    week_pages = [page_cited_as(week, text) for text in (weekday_text, sunday_text)]
-    saturday_page = page_cited_as(saturday, saturday_text)
-    Indexer().replace(
-        {week.source_key: week_pages, saturday.source_key: [saturday_page]}
+    week, saturday, (weekday_text, saturday_text, sunday_text) = (
+        index_week_and_saturday_schedules(settings, question)
     )
 
     answer(question, permissions=frozenset(), max_distance=0.5)
@@ -387,9 +381,7 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
     question = "When does the shop open?"
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_one_chunk_near(settings, question, public_page(chunk_text))
 
     answer(question, permissions=frozenset(), max_distance=0.1)
 
@@ -434,10 +426,8 @@ def test_answer_cites_the_document_of_its_retrieved_chunk(
 ) -> None:
     chunk_text = "The shop opens at nine on weekdays."
     question = "When does the shop open?"
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
     page = replace(public_page(chunk_text, source_key), title=title, url=url)
-    Indexer().replace({source_key: [page]})
+    index_one_chunk_near(settings, question, page)
     use_canned_llm(settings, "The shop opens at nine.")
 
     answered = answer(question, permissions=frozenset(), max_distance=0.1)
@@ -453,36 +443,7 @@ def test_answer_cites_each_document_once_in_the_order_of_its_nearest_chunk(
     settings: "Settings",
 ) -> None:
     question = "When does the shop open?"
-    weekday_text = "The shop opens at nine from Monday to Friday."
-    saturday_text = "On Saturdays the shop opens at ten."
-    sunday_text = "The shop is closed on Sundays."
-    # Cosine distances to the question: weekday 0.005, saturday 0.106 and
-    # sunday 0.293. Weekday and sunday are chunks of the same document, so
-    # its chunks come before and after the other document's.
-    use_chosen_embeddings(
-        settings,
-        {
-            question: [1.0, 0.0],
-            weekday_text: [1.0, 0.1],
-            saturday_text: [1.0, 0.5],
-            sunday_text: [1.0, 1.0],
-        },
-    )
-    week = Citation(
-        title="Week schedule",
-        url="https://example.com/hours/week/",
-        source_key="page:1",
-    )
-    saturday = Citation(
-        title="Saturday schedule",
-        url="https://example.com/hours/saturday/",
-        source_key="page:2",
-    )
-    week_pages = [page_cited_as(week, text) for text in (weekday_text, sunday_text)]
-    saturday_page = page_cited_as(saturday, saturday_text)
-    Indexer().replace(
-        {week.source_key: week_pages, saturday.source_key: [saturday_page]}
-    )
+    week, saturday, _texts = index_week_and_saturday_schedules(settings, question)
     use_canned_llm(settings, "The shop opens at nine, at ten on Saturdays.")
 
     answered = answer(question, permissions=frozenset(), max_distance=0.5)
@@ -530,9 +491,7 @@ def test_answer_cites_each_document_of_one_source_with_its_own_title_and_url(
 def test_answer_gives_its_citations_as_a_tuple(settings: "Settings") -> None:
     chunk_text = "The shop opens at nine on weekdays."
     question = "When does the shop open?"
-    # Cosine distance of the chunk to the question: about 0.005.
-    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    index_one_chunk_near(settings, question, public_page(chunk_text))
     use_canned_llm(settings, "The shop opens at nine.")
 
     answered = answer(question, permissions=frozenset(), max_distance=0.1)

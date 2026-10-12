@@ -1,4 +1,11 @@
-"""The test bench's LLM backends."""
+"""The test bench's LLM backends, and helpers configuring them for a test."""
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+if TYPE_CHECKING:
+    from pytest_django import Settings
 
 
 class CannedLLM:
@@ -32,3 +39,31 @@ class RecordingLLM:
         """Record the prompt and the system message, and return ``reply``."""
         self.calls.append((prompt, system))
         return self.reply
+
+
+def use_canned_llm(settings: "Settings", reply: str) -> None:
+    """Configure ``CannedLLM``, answering every prompt with ``reply``."""
+    settings.MINIMAL_RAG_LLM = {
+        "BACKEND": "tests.llms.CannedLLM",
+        "OPTIONS": {"reply": reply},
+    }
+
+
+def remove_llm_setting(settings: "Settings") -> None:
+    """Leave the LLM setting missing, whether or not the test settings define it.
+
+    It is set first so the deletion works either way.
+    """
+    settings.MINIMAL_RAG_LLM = {"BACKEND": "tests.llms.CannedLLM"}
+    del settings.MINIMAL_RAG_LLM
+
+
+@pytest.fixture
+def llm_calls(settings: "Settings") -> list[tuple[str, str]]:
+    """Configure ``RecordingLLM`` and return the ``(prompt, system)`` it records."""
+    calls: list[tuple[str, str]] = []
+    settings.MINIMAL_RAG_LLM = {
+        "BACKEND": "tests.llms.RecordingLLM",
+        "OPTIONS": {"calls": calls},
+    }
+    return calls
