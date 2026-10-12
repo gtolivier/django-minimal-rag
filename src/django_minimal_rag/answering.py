@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import retrieve
 
-CHUNK_SEPARATOR = "\n\n"
+PROMPT_PART_SEPARATOR = "\n\n"
 
 
 @dataclass(frozen=True)
@@ -29,5 +29,5 @@ def answer(
     chunks = retrieve(question, permissions=permissions, max_distance=max_distance)
     if not chunks:
         return None
-    prompt = CHUNK_SEPARATOR.join([*(chunk.text for chunk in chunks), question])
+    prompt = PROMPT_PART_SEPARATOR.join([*(chunk.text for chunk in chunks), question])
     return Answer(text=get_llm().complete(prompt, system=""))
