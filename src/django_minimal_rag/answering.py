@@ -56,13 +56,11 @@ def answer(
 
 def _cite(chunks: list[RetrievedChunk]) -> list[Citation]:
     """Return one citation per document, in the order of its nearest chunk."""
-    citations: dict[str, Citation] = {}
-    for chunk in chunks:
-        if chunk.source_key not in citations:
-            citations[chunk.source_key] = Citation(
-                title=chunk.title, url=chunk.url, source_key=chunk.source_key
-            )
-    return list(citations.values())
+    citations = (
+        Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
+        for chunk in chunks
+    )
+    return list(dict.fromkeys(citations))
 
 
 def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
