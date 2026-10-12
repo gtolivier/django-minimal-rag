@@ -4,7 +4,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from django_minimal_rag.llm import get_llm
-from django_minimal_rag.retrieval import RetrievedChunk, retrieve
+from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n\n"
 ANSWER_INSTRUCTIONS = (
@@ -25,12 +25,15 @@ def answer(
     *,
     permissions: AbstractSet[str],
     max_distance: float,
+    limit: int = DEFAULT_LIMIT,
 ) -> Answer | None:
-    """Return the LLM's answer from the chunks near ``question``.
+    """Return the LLM's answer from the at most ``limit`` chunks near ``question``.
 
     Return None, without calling the LLM, when no chunk is near enough.
     """
-    chunks = retrieve(question, permissions=permissions, max_distance=max_distance)
+    chunks = retrieve(
+        question, permissions=permissions, max_distance=max_distance, limit=limit
+    )
     if not chunks:
         return None
     return Answer(
