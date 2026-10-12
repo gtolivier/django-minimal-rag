@@ -154,6 +154,24 @@ def test_answer_gives_the_llm_a_prompt_holding_the_question(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "question", ["When does the shop open?", "Is the shop open on weekdays?"]
+)
+def test_answer_gives_the_llm_a_prompt_ending_with_the_question_element(
+    settings: "Settings", llm_calls: list[tuple[str, str]], question: str
+) -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    # Cosine distance of the chunk to the question: about 0.005.
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
+    Indexer().replace({"page:1": [public_page(chunk_text)]})
+
+    answer(question, permissions=frozenset(), max_distance=0.1)
+
+    [(prompt, _system)] = llm_calls
+    assert prompt.endswith(f"<question>{question}</question>")
+
+
+@pytest.mark.django_db
 def test_answer_gives_the_llm_every_retrieved_chunk_nearest_first(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
