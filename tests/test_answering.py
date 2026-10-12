@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -138,3 +139,43 @@ def test_answer_gives_the_llm_every_retrieved_chunk_nearest_first(
     [(prompt, _system)] = llm_calls
     assert all(text in prompt for text in (nearest, middle, farthest))
     assert prompt.index(nearest) < prompt.index(middle) < prompt.index(farthest)
+
+
+@pytest.mark.django_db
+def test_answer_gives_the_llm_each_chunk_under_its_document_title(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    weekday_text = "The shop opens at nine from Monday to Friday."
+    weekend_text = "On Saturdays the shop opens at ten."
+    weekday_title = "Weekday schedule"
+    weekend_title = "Saturday schedule"
+    # Cosine distances to the question: about 0.005 and 0.106.
+    use_chosen_embeddings(
+        settings,
+        {question: [1.0, 0.0], weekday_text: [1.0, 0.1], weekend_text: [1.0, 0.5]},
+    )
+    Indexer().replace(
+        {
+            "page:1": [
+                replace(public_page(weekday_text, "page:1"), title=weekday_title)
+            ],
+            "page:2": [
+                replace(public_page(weekend_text, "page:2"), title=weekend_title)
+            ],
+        }
+    )
+    llm_calls: list[tuple[str, str]] = []
+    use_recording_llm(settings, llm_calls)
+
+    answer(question, permissions=frozenset(), max_distance=0.5)
+
+    [(prompt, _system)] = llm_calls
+    assert all(title in prompt for title in (weekday_title, weekend_title))
+    # Each title comes before its own chunk, and after the previous chunk.
+    assert (
+        prompt.index(weekday_title)
+        < prompt.index(weekday_text)
+        < prompt.index(weekend_title)
+        < prompt.index(weekend_text)
+    )
