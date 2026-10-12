@@ -23,8 +23,16 @@ class LLM(Protocol):
 def get_llm() -> LLM:
     """Return the backend configured by the MINIMAL_RAG_LLM setting."""
     config = _llm_config()
-    backend: type[LLM] = import_string(config[BACKEND_KEY])
-    return backend(**config.get(OPTIONS_KEY, {}))
+    options = config.get(OPTIONS_KEY, {})
+    if not isinstance(options, Mapping):
+        msg = f"The {OPTIONS_KEY} of the {LLM_SETTING} setting must be a mapping."
+        raise ImproperlyConfigured(msg)
+    try:
+        backend: type[LLM] = import_string(config[BACKEND_KEY])
+    except (KeyError, AttributeError, ImportError) as error:
+        msg = f"The {LLM_SETTING} {BACKEND_KEY} must be an importable dotted path."
+        raise ImproperlyConfigured(msg) from error
+    return backend(**options)
 
 
 def _llm_config() -> Mapping[str, Any]:
@@ -33,6 +41,9 @@ def _llm_config() -> Mapping[str, Any]:
     except AttributeError as error:
         msg = f"The {LLM_SETTING} setting is required."
         raise ImproperlyConfigured(msg) from error
+    if not isinstance(config, Mapping):
+        msg = f"The {LLM_SETTING} setting must be a mapping."
+        raise ImproperlyConfigured(msg)
     return config
 
 
