@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from django_minimal_rag.answering import answer
+from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, answer
 from django_minimal_rag.indexing import Indexer
 from tests.documents import public_page
 from tests.embeddings import use_chosen_embeddings
@@ -179,3 +179,21 @@ def test_answer_gives_the_llm_each_chunk_under_its_document_title(
         < prompt.index(weekend_title)
         < prompt.index(weekend_text)
     )
+
+
+@pytest.mark.django_db
+def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    question = "When does the shop open?"
+    # Cosine distance of the chunk to the question: about 0.005.
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
+    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    llm_calls: list[tuple[str, str]] = []
+    use_recording_llm(settings, llm_calls)
+
+    answer(question, permissions=frozenset(), max_distance=0.1)
+
+    [(_prompt, system)] = llm_calls
+    assert system == ANSWER_INSTRUCTIONS
