@@ -393,6 +393,10 @@ def test_answer_instructions_name_the_question_element() -> None:
     assert "<question>" in ANSWER_INSTRUCTIONS
 
 
+def test_answer_instructions_name_the_document_element() -> None:
+    assert "<document>" in ANSWER_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
     settings: "Settings", llm_calls: list[tuple[str, str]]
