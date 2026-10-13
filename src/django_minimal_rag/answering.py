@@ -8,9 +8,10 @@ from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n"
 QUESTION_ELEMENT = "question"
+DOCUMENT_ELEMENT = "document"
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
-    "using only the extracts in the <document> elements. "
+    f"using only the extracts in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
     "Answer in the language of the question."
 )
@@ -93,9 +94,9 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     """Return the chunks of one document: its title, then its extracts."""
     return PROMPT_PART_SEPARATOR.join(
         [
-            "<document>",
+            f"<{DOCUMENT_ELEMENT}>",
             f"<title>{chunks[0].title}</title>",
             *(f"<extract>{chunk.text}</extract>" for chunk in chunks),
-            "</document>",
+            f"</{DOCUMENT_ELEMENT}>",
         ]
     )
