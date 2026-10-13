@@ -99,14 +99,16 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     return PROMPT_PART_SEPARATOR.join(
         [
             f"<{DOCUMENT_ELEMENT}>",
-            _element(TITLE_ELEMENT, escape(chunks[0].title, quote=False)),
-            *(
-                _element(EXTRACT_ELEMENT, escape(chunk.text, quote=False))
-                for chunk in chunks
-            ),
+            _text_element(TITLE_ELEMENT, chunks[0].title),
+            *(_text_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
             f"</{DOCUMENT_ELEMENT}>",
         ]
     )
+
+
+def _text_element(name: str, text: str) -> str:
+    """Return the element ``name`` holding ``text``, escaped so it cannot close it."""
+    return _element(name, escape(text, quote=False))
 
 
 def _element(name: str, content: str) -> str:
