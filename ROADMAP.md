@@ -270,6 +270,14 @@ Each one is settled before the feature that needs its answer.
   reports, but the chunks of a source no producer reports any more — a
   model no longer registered, a producer that never prunes — stay
   quotable. Whether the package offers a way to find or remove them.
+- **Query and document embeddings:** the `Embeddings` Protocol has one
+  method, `embed(texts)`, used both for chunks (`replace()`) and for the
+  question (`retrieve()`). Some models expect a different input for each —
+  e5 prefixes `query: ` and `passage: `, nomic `search_query: ` and
+  `search_document: ` — and some APIs take an input type instead (Voyage,
+  Cohere). A backend cannot tell which it is given. Whether the Protocol
+  gets a second method, as LangChain's `embed_query` and
+  `embed_documents`, or `embed()` an argument saying which.
 
 ## Features
 
