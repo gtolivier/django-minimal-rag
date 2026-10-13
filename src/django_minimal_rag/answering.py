@@ -8,7 +8,8 @@ from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n"
 ANSWER_INSTRUCTIONS = (
-    "Answer the question using only the document extracts given. "
+    "Answer the question in the <question> element "
+    "using only the document extracts given. "
     "If they do not contain the answer, say so. "
     "Answer in the language of the question."
 )
