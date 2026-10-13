@@ -223,8 +223,7 @@ implements.
   prompt (answer the `<question>` only from the extracts in the
   `<document>` elements, say so when they do not hold the answer, answer
   in the language of the question) and a prompt whose parts
-  are delimited by tags, so that a chunk's own text cannot pass for a
-  title or the question: one `<document>` per document, in the order of
+  are delimited by tags: one `<document>` per document, in the order of
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
   first, then the `<question>`. The prompt is not customizable, and
   answers are not streamed, until a project needs it.
@@ -257,6 +256,11 @@ Each one is settled before the feature that needs its answer.
 - **Synchronous or deferred indexing:** whether `replace()` embeds before
   returning, or stores the texts and leaves embedding to a background
   task (a candidate for an extra).
+- **Escaping the prompt:** titles, extracts and the question go into
+  their elements as they are, so a text holding `</extract>` or
+  `</question>` can close its element and make up another — a document
+  or a question the LLM is told to trust. Whether the package escapes
+  `<`, `>` and `&` in them, and whether the system prompt says so.
 
 ## Features
 

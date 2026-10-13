@@ -303,7 +303,8 @@ else:
   delimits each part with a tag: one `<document>` element per document,
   in the order of its nearest chunk, holding its `<title>` then one
   `<extract>` per chunk, nearest first; then the `<question>`. Neither is
-  customizable yet.
+  customizable yet, and titles, extracts and the question are not
+  escaped: a text holding a closing tag can break out of its element.
 - The result is a frozen `Answer`: the LLM's `text`, as it wrote it, and
   its `citations`, a tuple of frozen `Citation`s of the `title`, `url` and
   `source_key` of each document a chunk came from. They are built from the
