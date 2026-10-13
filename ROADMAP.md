@@ -135,7 +135,8 @@ implements.
   question — past a relevance threshold — are discarded before the LLM is
   called; with none left, there
   is no answer rather than an answer from the LLM's own knowledge. Each
-  answer cites the documents it used (see "Citations", below).
+  answer cites the documents it used (see "Citations are built by the
+  package", below).
 - **Extras only for optional backends.** An extra (`pip install
   django-minimal-rag[...]`) is acceptable only for a dependency that does
   not change the release cycle or the test matrix — a background-task
@@ -199,6 +200,40 @@ implements.
   `retrieve()` orders chunks by cosine distance and takes a
   `max_distance`, inclusive, on each call; no setting yet. Its results are
   plain values (`RetrievedChunk`), not model instances.
+- **Bring your own LLM.** As for embeddings, the project chooses its LLM
+  through a backend it names in a setting, `MINIMAL_RAG_LLM = {"BACKEND":
+  "…", "OPTIONS": {…}}`, built anew by `get_llm()` on every use with the
+  same checks. A backend satisfies the `LLM` Protocol, one method:
+  `complete(prompt, *, system)`, which returns the answer's text. The
+  package ships no real provider, only `FakeLLM`, which answers with its
+  prompt; a real LLM is plugged in by the project — in
+  django-model-rag-demo first — or, later, by an optional extra.
+- **No RAG framework.** LangChain and LlamaIndex would bring their own
+  chunking, storage and chains, duplicating what this package does; they
+  are heavy, change often, and bypass Django's migrations and
+  transactions. Small, Django-specific libraries were ruled out too
+  (wagtail-vector-index, django-ai-core): too narrow, or not maintained
+  enough to depend on. Building the Django-native layer here is the point
+  of the package.
+- **`answer()` builds on `retrieve()`, with a fixed prompt.**
+  `answer(question, *, permissions, max_distance, limit=5)` resolves the
+  LLM first, so a missing setting fails even when nothing is indexed, then
+  retrieves the chunks, and returns `None` without calling the LLM when
+  none is within the threshold. Otherwise it sends the LLM a fixed system
+  prompt (answer only from the extracts, say so when they do not hold the
+  answer, answer in the language of the question) and a prompt whose parts
+  are delimited by tags, so that a chunk's own text cannot pass for a
+  title or the question: one `<document>` per document, in the order of
+  its nearest chunk, with its `<title>` and its `<extract>`s nearest
+  first, then the `<question>`. The prompt is not customizable, and
+  answers are not streamed, until a project needs it.
+- **Citations are built by the package, not by the LLM.** An `Answer`
+  holds the LLM's `text` and its `citations`: one `Citation(title, url,
+  source_key)` per document whose chunks were sent, in the order of its
+  nearest chunk, so they do not depend on what the LLM writes. Two
+  documents of one source — translations, say — are cited separately when
+  their title or URL differs. A document without a URL is cited with
+  `url=""`: the project decides how to show it.
 
 ## Open questions
 
@@ -210,13 +245,6 @@ Each one is settled before the feature that needs its answer.
   where BCP 47's canonical form is `fr-FR`, and some tags carry a script
   (`zh-hans`, `sr-latn`) rather than a region. The feature that first reads
   `language` decides its canonical form and where it is normalized.
-- **Citations:** how a document without a URL is cited. django-model-rag
-  gives an empty `url` (`""`) to a model with no URL source, and the
-  Protocol's `url: str` accepts it, so either indexing rejects an empty
-  `url` at runtime — and such documents cannot be indexed — or a citation
-  falls back on something else, such as the title or the `source_key`.
-- **The LLM:** how a project chooses it, the prompt, the shape of a
-  citation, and whether answers are streamed.
 - **Retries:** embedding runs inside `replace()`'s transaction, so
   retrying a rate-limited API there holds the source locks for as long as
   it waits. Whether retries stay inside, or embedding moves before the
@@ -258,7 +286,7 @@ Provisional: the design pass may reorder, split or merge them.
   the first retrieval, never added afterwards. Retrieval does not filter on
   `language` (the open question stays open), and the HNSW index is
   deferred until the number of chunks calls for it.
-- [ ] **8. Cited answers.** The LLM answers from the retrieved chunks, with
+- [x] **8. Cited answers.** The LLM answers from the retrieved chunks, with
   citations to their sources.
 - [ ] **9. Vectors reused across sources (optional, may be dropped).** A
   text already stored by the current model in another source of the same

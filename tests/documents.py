@@ -16,6 +16,18 @@ class SampleDocument:
     permissions: AbstractSet[str]
 
 
+def public_page(text: str, source_key: str = "page:1") -> SampleDocument:
+    """A public page of the host project, in English, holding ``text``."""
+    return SampleDocument(
+        text=text,
+        source_key=source_key,
+        title="Opening hours",
+        url="https://example.com/opening-hours/",
+        language="en",
+        permissions=frozenset(),
+    )
+
+
 @dataclass
 class MutableDocument:
     """A document a host project may define as a plain dataclass: unhashable."""

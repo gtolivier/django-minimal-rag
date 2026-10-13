@@ -113,6 +113,16 @@ def use_fake_embeddings(settings: "Settings", dimensions: int) -> None:
     }
 
 
+def use_chosen_embeddings(
+    settings: "Settings", vectors: Mapping[str, list[float]]
+) -> None:
+    """Configure ``ChosenEmbeddings``, giving each text of ``vectors`` its vector."""
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.ChosenEmbeddings",
+        "OPTIONS": {"vectors": vectors},
+    }
+
+
 def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
     """Configure ``MiscountingEmbeddings``, returning ``vector_count`` vectors."""
     settings.MINIMAL_RAG_EMBEDDINGS = {
