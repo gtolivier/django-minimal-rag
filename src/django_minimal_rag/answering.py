@@ -2,6 +2,7 @@
 
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from html import escape
 
 from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
@@ -99,7 +100,10 @@ def _document(chunks: list[RetrievedChunk]) -> str:
         [
             f"<{DOCUMENT_ELEMENT}>",
             _element(TITLE_ELEMENT, chunks[0].title),
-            *(_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
+            *(
+                _element(EXTRACT_ELEMENT, escape(chunk.text, quote=False))
+                for chunk in chunks
+            ),
             f"</{DOCUMENT_ELEMENT}>",
         ]
     )
