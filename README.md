@@ -297,8 +297,9 @@ else:
 - With no chunk within `max_distance`, it returns `None` and the LLM is
   not called: there is no answer from the LLM's own knowledge.
 - Otherwise the LLM is called once. Its system prompt tells it to answer
-  only from the extracts given, to say so when they do not hold the
-  answer, and to answer in the language of the question. Its prompt
+  the question in the `<question>` element only from the extracts in the
+  `<document>` elements, to say so when they do not hold the answer, and
+  to answer in the language of the question. Its prompt
   delimits each part with a tag: one `<document>` element per document,
   in the order of its nearest chunk, holding its `<title>` then one
   `<extract>` per chunk, nearest first; then the `<question>`. Neither is

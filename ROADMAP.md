@@ -220,8 +220,9 @@ implements.
   LLM first, so a missing setting fails even when nothing is indexed, then
   retrieves the chunks, and returns `None` without calling the LLM when
   none is within the threshold. Otherwise it sends the LLM a fixed system
-  prompt (answer only from the extracts, say so when they do not hold the
-  answer, answer in the language of the question) and a prompt whose parts
+  prompt (answer the `<question>` only from the extracts in the
+  `<document>` elements, say so when they do not hold the answer, answer
+  in the language of the question) and a prompt whose parts
   are delimited by tags, so that a chunk's own text cannot pass for a
   title or the question: one `<document>` per document, in the order of
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
