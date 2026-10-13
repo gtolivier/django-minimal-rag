@@ -600,6 +600,16 @@ def test_answer_instructions_name_the_extract_element() -> None:
     assert "<extract>" in ANSWER_INSTRUCTIONS
 
 
+def test_answer_instructions_name_the_escaped_forms_of_lt_gt_and_amp() -> None:
+    missing = [
+        escaped
+        for escaped in ("&lt;", "&gt;", "&amp;")
+        if escaped not in ANSWER_INSTRUCTIONS
+    ]
+
+    assert missing == []
+
+
 @pytest.mark.django_db
 def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
     settings: "Settings", llm_calls: list[tuple[str, str]]
