@@ -99,7 +99,7 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     return PROMPT_PART_SEPARATOR.join(
         [
             f"<{DOCUMENT_ELEMENT}>",
-            _element(TITLE_ELEMENT, chunks[0].title),
+            _element(TITLE_ELEMENT, escape(chunks[0].title, quote=False)),
             *(
                 _element(EXTRACT_ELEMENT, escape(chunk.text, quote=False))
                 for chunk in chunks
