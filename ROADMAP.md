@@ -116,10 +116,10 @@ implements.
   re-embed only what changed.
 - **Each `replace()` is applied in one transaction.** The atomicity of a
   batch belongs to this package: one transaction covers all the groups of
-  a call, embedding included, so a backend failure stores nothing of the
-  call. Transient errors such as a rate-limited embedding API belong to it
-  too, to be retried with backoff: the producer cannot tell which
-  exceptions are transient (not implemented yet, see "Retries" below).
+  a call, so a failure stores nothing of the call. Embedding is not part
+  of that transaction: it runs after the commit (see "Embedding is
+  decoupled from `replace()`" below; until feature 11, it still runs
+  inside).
 - **Concurrent `replace()` calls are serialized by a row lock, not a
   constraint.** `replace()` locks the row of each source it replaces or
   removes (`select_for_update`), before changing anything of it, until its
@@ -131,6 +131,27 @@ implements.
   are locked in sorted `source_key` order, whatever the order of the
   `groups` mapping, so two calls sharing several sources wait for each
   other instead of deadlocking.
+- **Embedding is decoupled from `replace()`.** `replace()` stores the
+  chunk texts and commits; a new or changed text is stored without a
+  vector. `embed_pending()` computes the missing vectors afterwards,
+  outside any transaction that holds the source locks, so a slow or
+  rate-limited embedding API never holds them. Retrieval ignores chunks
+  without a vector, so a new or changed chunk cannot be found until it is
+  embedded. That gap is accepted: a missing chunk is better than a stale
+  one, which would point to content that no longer exists, and could keep
+  permissions that have since been revoked. Removed chunks disappear at
+  once, with the transaction that removes them.
+- **Synchronous by default, deferred by choice.** By default `replace()`
+  calls `embed_pending()` itself once its transaction is committed:
+  indexing needs no configuration, and its caller sees embedding errors.
+  A setting opts into deferral: `replace()` then only stores the texts,
+  and the project schedules `embed_pending()` with whatever it already
+  uses — Celery, `django.tasks`, cron, a direct call. Deferral being a
+  setting makes switching to it a deliberate choice. The package depends
+  on no queue: like the embedding model and the LLM, the queue is the
+  project's choice. Running `embed_pending()` again is the retry: a
+  failure leaves the chunks without a vector, and the next run embeds
+  only what is still missing.
 - **Answers come from the retrieved chunks only.** Chunks too far from the
   question — past a relevance threshold — are discarded before the LLM is
   called; with none left, there
@@ -245,17 +266,10 @@ Each one is settled before the feature that needs its answer.
   where BCP 47's canonical form is `fr-FR`, and some tags carry a script
   (`zh-hans`, `sr-latn`) rather than a region. The feature that first reads
   `language` decides its canonical form and where it is normalized.
-- **Retries:** embedding runs inside `replace()`'s transaction, so
-  retrying a rate-limited API there holds the source locks for as long as
-  it waits. Whether retries stay inside, or embedding moves before the
-  transaction (re-checking what changed once the locks are taken).
 - **Orphaned chunks:** `replace()` and `prune()` remove what their producer
   reports, but the chunks of a source no producer reports any more — a
   model no longer registered, a producer that never prunes — stay
   quotable. Whether the package offers a way to find or remove them.
-- **Synchronous or deferred indexing:** whether `replace()` embeds before
-  returning, or stores the texts and leaves embedding to a background
-  task (a candidate for an extra).
 
 ## Features
 
@@ -296,6 +310,14 @@ Provisional: the design pass may reorder, split or merge them.
   `</question>` can close its element and make up another — a document
   or a question the LLM is told to trust. `<`, `>` and `&` are escaped in
   them; whether the system prompt says so is settled by the feature.
+- [ ] **11. Deferred embedding.** `replace()` stores texts without
+  vectors and commits; `embed_pending()` embeds the chunks still missing
+  a vector, outside the source locks; retrieval ignores chunks without a
+  vector. `replace()` calls `embed_pending()` after its commit unless a
+  setting defers it to the project (see "Decisions"). Settled by the
+  feature: the setting's name, how two concurrent `embed_pending()` runs
+  avoid embedding the same chunks, and whether it also re-embeds the
+  chunks of a previous embedding model that no producer has replaced.
 
 ## Not planned here
 
