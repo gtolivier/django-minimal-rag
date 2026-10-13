@@ -79,7 +79,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
             ),
-            _element(QUESTION_ELEMENT, question),
+            _text_element(QUESTION_ELEMENT, question),
         ]
     )
 
