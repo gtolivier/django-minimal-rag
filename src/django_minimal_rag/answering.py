@@ -99,19 +99,24 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     """Return the chunks of one document: its title, then its extracts."""
     return PROMPT_PART_SEPARATOR.join(
         [
-            f"<{DOCUMENT_ELEMENT}>",
+            _opening_tag(DOCUMENT_ELEMENT),
             _text_element(TITLE_ELEMENT, chunks[0].title),
             *(_text_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
-            f"</{DOCUMENT_ELEMENT}>",
+            _closing_tag(DOCUMENT_ELEMENT),
         ]
     )
 
 
 def _text_element(name: str, text: str) -> str:
     """Return the element ``name`` holding ``text``, escaped so it cannot close it."""
-    return _element(name, escape(text, quote=False))
+    return f"{_opening_tag(name)}{escape(text, quote=False)}{_closing_tag(name)}"
 
 
-def _element(name: str, content: str) -> str:
-    """Return ``content`` between the opening and closing tags of ``name``."""
-    return f"<{name}>{content}</{name}>"
+def _opening_tag(name: str) -> str:
+    """Return the tag that opens the element ``name``."""
+    return f"<{name}>"
+
+
+def _closing_tag(name: str) -> str:
+    """Return the tag that closes the element ``name``."""
+    return f"</{name}>"
