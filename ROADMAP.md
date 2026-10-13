@@ -220,10 +220,10 @@ implements.
   LLM first, so a missing setting fails even when nothing is indexed, then
   retrieves the chunks, and returns `None` without calling the LLM when
   none is within the threshold. Otherwise it sends the LLM a fixed system
-  prompt (answer only from the extracts, say so when they do not hold the
-  answer, answer in the language of the question) and a prompt whose parts
-  are delimited by tags, so that a chunk's own text cannot pass for a
-  title or the question: one `<document>` per document, in the order of
+  prompt (answer the `<question>` only from the `<extract>` and `<title>`
+  elements in the `<document>` elements, say so when they do not hold the
+  answer, answer in the language of the question) and a prompt whose
+  parts are delimited by tags: one `<document>` per document, in the order of
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
   first, then the `<question>`. The prompt is not customizable, and
   answers are not streamed, until a project needs it.
@@ -291,6 +291,11 @@ Provisional: the design pass may reorder, split or merge them.
 - [ ] **9. Vectors reused across sources (optional, may be dropped).** A
   text already stored by the current model in another source of the same
   `replace()` call keeps that vector instead of being embedded again.
+- [ ] **10. Escaped prompt.** Titles, extracts and the question go into
+  their elements as they are, so a text holding `</extract>` or
+  `</question>` can close its element and make up another — a document
+  or a question the LLM is told to trust. `<`, `>` and `&` are escaped in
+  them; whether the system prompt says so is settled by the feature.
 
 ## Not planned here
 

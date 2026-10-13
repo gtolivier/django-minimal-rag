@@ -7,8 +7,14 @@ from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n"
+QUESTION_ELEMENT = "question"
+DOCUMENT_ELEMENT = "document"
+TITLE_ELEMENT = "title"
+EXTRACT_ELEMENT = "extract"
 ANSWER_INSTRUCTIONS = (
-    "Answer the question using only the document extracts given. "
+    f"Answer the question in the <{QUESTION_ELEMENT}> element "
+    f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
+    f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
     "Answer in the language of the question."
 )
@@ -72,7 +78,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
             ),
-            f"<question>{question}</question>",
+            _element(QUESTION_ELEMENT, question),
         ]
     )
 
@@ -91,9 +97,14 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     """Return the chunks of one document: its title, then its extracts."""
     return PROMPT_PART_SEPARATOR.join(
         [
-            "<document>",
-            f"<title>{chunks[0].title}</title>",
-            *(f"<extract>{chunk.text}</extract>" for chunk in chunks),
-            "</document>",
+            f"<{DOCUMENT_ELEMENT}>",
+            _element(TITLE_ELEMENT, chunks[0].title),
+            *(_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
+            f"</{DOCUMENT_ELEMENT}>",
         ]
     )
+
+
+def _element(name: str, content: str) -> str:
+    """Return ``content`` between the opening and closing tags of ``name``."""
+    return f"<{name}>{content}</{name}>"

@@ -297,12 +297,15 @@ else:
 - With no chunk within `max_distance`, it returns `None` and the LLM is
   not called: there is no answer from the LLM's own knowledge.
 - Otherwise the LLM is called once. Its system prompt tells it to answer
-  only from the extracts given, to say so when they do not hold the
-  answer, and to answer in the language of the question. Its prompt
+  the question in the `<question>` element only from the `<extract>` and
+  `<title>` elements in the `<document>` elements, to say so when they do
+  not hold the answer, and to answer in the language of the question. A
+  test checks that every element of the prompt is named there. Its prompt
   delimits each part with a tag: one `<document>` element per document,
   in the order of its nearest chunk, holding its `<title>` then one
   `<extract>` per chunk, nearest first; then the `<question>`. Neither is
-  customizable yet.
+  customizable yet, and titles, extracts and the question are not
+  escaped: a text holding a closing tag can break out of its element.
 - The result is a frozen `Answer`: the LLM's `text`, as it wrote it, and
   its `citations`, a tuple of frozen `Citation`s of the `title`, `url` and
   `source_key` of each document a chunk came from. They are built from the

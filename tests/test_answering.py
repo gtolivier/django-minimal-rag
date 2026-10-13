@@ -1,3 +1,4 @@
+import re
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -387,6 +388,39 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 
     [(_prompt, system)] = llm_calls
     assert system == ANSWER_INSTRUCTIONS
+
+
+@pytest.mark.django_db
+def test_answer_instructions_name_every_element_of_the_prompt(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    question = "When does the shop open?"
+    index_one_chunk_near(settings, question, public_page(chunk_text))
+
+    answer(question, permissions=frozenset(), max_distance=0.1)
+
+    [(prompt, system)] = llm_calls
+    # The names of the prompt's opening tags; closing tags start with a slash.
+    element_names = set(re.findall(r"<(\w+)>", prompt))
+    assert element_names
+    assert {name for name in element_names if f"<{name}>" not in system} == set()
+
+
+def test_answer_instructions_name_the_question_element() -> None:
+    assert "<question>" in ANSWER_INSTRUCTIONS
+
+
+def test_answer_instructions_name_the_document_element() -> None:
+    assert "<document>" in ANSWER_INSTRUCTIONS
+
+
+def test_answer_instructions_name_the_title_element() -> None:
+    assert "<title>" in ANSWER_INSTRUCTIONS
+
+
+def test_answer_instructions_name_the_extract_element() -> None:
+    assert "<extract>" in ANSWER_INSTRUCTIONS
 
 
 @pytest.mark.django_db
