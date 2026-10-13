@@ -7,8 +7,9 @@ from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n"
+QUESTION_ELEMENT = "question"
 ANSWER_INSTRUCTIONS = (
-    "Answer the question in the <question> element "
+    f"Answer the question in the <{QUESTION_ELEMENT}> element "
     "using only the document extracts given. "
     "If they do not contain the answer, say so. "
     "Answer in the language of the question."
@@ -73,7 +74,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
             ),
-            f"<question>{question}</question>",
+            f"<{QUESTION_ELEMENT}>{question}</{QUESTION_ELEMENT}>",
         ]
     )
 
