@@ -10,7 +10,7 @@ PROMPT_PART_SEPARATOR = "\n"
 QUESTION_ELEMENT = "question"
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
-    "using only the document extracts given. "
+    "using only the extracts in the <document> elements. "
     "If they do not contain the answer, say so. "
     "Answer in the language of the question."
 )
