@@ -78,7 +78,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
             ),
-            f"<{QUESTION_ELEMENT}>{question}</{QUESTION_ELEMENT}>",
+            _element(QUESTION_ELEMENT, question),
         ]
     )
 
@@ -98,11 +98,13 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     return PROMPT_PART_SEPARATOR.join(
         [
             f"<{DOCUMENT_ELEMENT}>",
-            f"<{TITLE_ELEMENT}>{chunks[0].title}</{TITLE_ELEMENT}>",
-            *(
-                f"<{EXTRACT_ELEMENT}>{chunk.text}</{EXTRACT_ELEMENT}>"
-                for chunk in chunks
-            ),
+            _element(TITLE_ELEMENT, chunks[0].title),
+            *(_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
             f"</{DOCUMENT_ELEMENT}>",
         ]
     )
+
+
+def _element(name: str, content: str) -> str:
+    """Return ``content`` between the opening and closing tags of ``name``."""
+    return f"<{name}>{content}</{name}>"
