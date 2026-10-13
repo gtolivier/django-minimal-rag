@@ -13,7 +13,8 @@ TITLE_ELEMENT = "title"
 EXTRACT_ELEMENT = "extract"
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
-    f"using only the extracts in the <{DOCUMENT_ELEMENT}> elements. "
+    f"using only the extracts and the <{TITLE_ELEMENT}> elements "
+    f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
     "Answer in the language of the question."
 )
