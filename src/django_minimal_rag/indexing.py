@@ -24,7 +24,7 @@ DEFAULT_BATCH_SIZE = 100
 DEFAULT_CLAIM_TIMEOUT = datetime.timedelta(minutes=10)
 """How long a claim keeps other runs off a chunk when no claim timeout is given."""
 DEFER_EMBEDDING_SETTING = "MINIMAL_RAG_DEFER_EMBEDDING"
-"""When true, replace() does not run embed_pending() once it commits."""
+"""When true, replace() does not embed the chunks it stored once it commits."""
 
 
 class Indexer:
@@ -303,15 +303,20 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
     """Store the chunks of all ``plans``, each source's pieces ranked in order.
 
     A text without a stored vector is stored without one. Unless the
-    ``DEFER_EMBEDDING_SETTING`` setting is true, embed_pending() embeds it once
-    the transaction commits.
+    ``DEFER_EMBEDDING_SETTING`` setting is true, it is embedded once the
+    transaction commits, as are the other pending chunks of ``plans``' documents
+    — never those of another source.
     """
     _store_chunks_without_embedding(plans, embeddings)
     if not _is_embedding_deferred():
         document_ids = {
             stored_document.pk for plan in plans for stored_document, _ in plan.pieces
         }
-        transaction.on_commit(lambda: _embed_pending(None, None, document_ids))
+        transaction.on_commit(
+            lambda: _embed_pending(
+                batch_size=None, claim_timeout=None, document_ids=document_ids
+            )
+        )
 
 
 def _is_embedding_deferred() -> bool:
