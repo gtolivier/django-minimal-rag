@@ -1,6 +1,6 @@
 """Indexing of documents into the storage models."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
@@ -58,8 +58,7 @@ def embed_pending() -> int:
     if not pending:
         return 0
     embeddings = get_embeddings()
-    texts = list(dict.fromkeys(chunk.text for chunk in pending))
-    vectors = dict(zip(texts, _embed(texts, embeddings), strict=True))
+    vectors = _embed_distinct((chunk.text for chunk in pending), embeddings)
     for chunk in pending:
         chunk.embedding = vectors[chunk.text]
         chunk.embedding_model = embeddings.model
@@ -229,20 +228,29 @@ def _vectors(plans: Sequence[_Plan], embeddings: Embeddings) -> list[Any]:
 
     A text already embedded by the same model keeps its vector.
     """
-    new_texts = list(
-        dict.fromkeys(
+    new_vectors = _embed_distinct(
+        (
             text
             for plan in plans
             for _, text in plan.pieces
             if text not in plan.stored_vectors
-        )
+        ),
+        embeddings,
     )
-    new_vectors = dict(zip(new_texts, _embed(new_texts, embeddings), strict=True))
     return [
         plan.stored_vectors[text] if text in plan.stored_vectors else new_vectors[text]
         for plan in plans
         for _, text in plan.pieces
     ]
+
+
+def _embed_distinct(texts: Iterable[str], embeddings: Embeddings) -> dict[str, Any]:
+    """Return the vector ``embeddings`` gives each of ``texts``, by text.
+
+    A text repeated in ``texts`` is embedded once, in a single call for all.
+    """
+    distinct_texts = list(dict.fromkeys(texts))
+    return dict(zip(distinct_texts, _embed(distinct_texts, embeddings), strict=True))
 
 
 def _embed(texts: Sequence[str], embeddings: Embeddings) -> list[Any]:
