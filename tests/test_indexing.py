@@ -1525,6 +1525,44 @@ def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_ch
 
 
 @pytest.mark.django_db
+def test_embed_pending_run_during_replaces_backend_call_skips_the_chunks_it_stored(
+    settings: "Settings",
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default, so replace()
+    # embeds its chunks once it commits.
+    replaced_texts = ["Answer to question 1.", "Answer to question 3."]
+    calls: list[list[str]] = []
+    pending_run_counts: list[int] = []
+
+    def run_embed_pending() -> None:
+        # Only during replace()'s backend call: the run's own backend call
+        # comes back here too.
+        if len(calls) > 1:
+            return
+        # Stored once replace() has claimed its chunks, so left to the run.
+        store_pending_chunks("faq:2", ["Answer to question 2."])
+        pending_run_counts.append(embed_pending())
+
+    use_interleaving_embeddings(settings, run_embed_pending, calls)
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 3)]})
+
+    assert pending_run_counts == [1]
+    replace_call, *pending_run_calls = calls
+    assert sorted(replace_call) == replaced_texts
+    assert pending_run_calls == [["Answer to question 2."]]
+    # InterleavingEmbeddings gives each text its length.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        "Answer to question 1.": ("interleaving", [21.0, 1.0]),
+        "Answer to question 3.": ("interleaving", [21.0, 1.0]),
+        "Answer to question 2.": ("interleaving", [21.0, 1.0]),
+    }
+
+
+@pytest.mark.django_db
 def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
     settings: "Settings",
 ) -> None:
