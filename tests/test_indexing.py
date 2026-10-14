@@ -589,6 +589,26 @@ def test_replace_deferring_embedding_stores_new_texts_without_vector_or_backend_
 
 
 @pytest.mark.django_db
+def test_replace_deferring_embedding_keeps_the_stored_vector_of_an_unchanged_text(
+    settings: "Settings",
+) -> None:
+    use_recording_embeddings(settings)
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+    vector_before = list(Chunk.objects.get().embedding)
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = True
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    chunk = Chunk.objects.get()
+    vector_after = None if chunk.embedding is None else list(chunk.embedding)
+    assert (chunk.text, chunk.embedding_model, vector_after) == (
+        "Answer to question 1.",
+        "recording",
+        vector_before,
+    )
+
+
+@pytest.mark.django_db
 def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
     settings: "Settings",
 ) -> None:
