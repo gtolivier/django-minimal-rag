@@ -1078,3 +1078,22 @@ def test_embed_pending_leaves_a_chunk_embedded_by_another_model_as_it_is(
     pending_chunk = Chunk.objects.get(text="Answer to question 2.")
     assert pending_chunk.embedding_model == "recording"
     assert list(pending_chunk.embedding) == [0.0, 1.0]
+
+
+@pytest.mark.django_db
+def test_embed_pending_embeds_a_shared_text_once_and_gives_each_chunk_its_vector(
+    settings: "Settings",
+) -> None:
+    embedded = use_recording_embeddings(settings)
+    shared_text = "Shared answer."
+    store_pending_chunks("faq:1", [shared_text])
+    store_pending_chunks("faq:2", [shared_text])
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 2
+    assert embedded == [shared_text]
+    assert {
+        chunk.document.source.source_key: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.select_related("document__source")
+    } == {"faq:1": ("recording", [0.0, 1.0]), "faq:2": ("recording", [0.0, 1.0])}
