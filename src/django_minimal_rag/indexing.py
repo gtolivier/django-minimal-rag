@@ -54,7 +54,16 @@ class Indexer:
 
 def embed_pending() -> int:
     """Embed the chunks still waiting for a vector; return how many were."""
-    return 0
+    pending = list(Chunk.objects.filter(embedding__isnull=True))
+    if not pending:
+        return 0
+    embeddings = get_embeddings()
+    vectors = _embed([chunk.text for chunk in pending], embeddings)
+    for chunk, vector in zip(pending, vectors, strict=True):
+        chunk.embedding = vector
+        chunk.embedding_model = embeddings.model
+    Chunk.objects.bulk_update(pending, ["embedding", "embedding_model"])
+    return len(pending)
 
 
 class _Plan(NamedTuple):
