@@ -19,6 +19,8 @@ from django_minimal_rag.models import Chunk, Document, Source
 
 MODEL_LABEL_SEPARATOR = ":"
 """What ends the model label at the start of a source key."""
+DEFAULT_BATCH_SIZE = 100
+"""Most chunks per embedding call when no batch size is given."""
 DEFER_EMBEDDING_SETTING = "MINIMAL_RAG_DEFER_EMBEDDING"
 """When true, replace() does not run embed_pending() once it commits."""
 
@@ -63,7 +65,7 @@ def embed_pending(
 ) -> int:
     """Embed the chunks still waiting for a vector; return how many were.
 
-    With ``batch_size``, embed them in calls of at most that many chunks.
+    Embed them in calls of at most ``batch_size`` chunks (100 by default).
     With ``claim_timeout``, skip the chunks claimed more recently than that.
     """
     _check_batch_size(batch_size)
@@ -72,7 +74,7 @@ def embed_pending(
         return 0
     try:
         embeddings = get_embeddings()
-        chunks_per_call = batch_size or len(pending)
+        chunks_per_call = batch_size or DEFAULT_BATCH_SIZE
         for start in range(0, len(pending), chunks_per_call):
             _embed_chunks(pending[start : start + chunks_per_call], embeddings)
     except BaseException:
