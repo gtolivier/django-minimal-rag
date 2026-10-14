@@ -16,7 +16,7 @@ from django.test.utils import CaptureQueriesContext
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
-from django_minimal_rag.indexing import Indexer
+from django_minimal_rag.indexing import Indexer, embed_pending
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import MutableDocument, SampleDocument
 from tests.embeddings import (
@@ -964,3 +964,13 @@ def test_prune_leaves_a_source_committed_after_it_locked_its_sources(
     assert list(Source.objects.values_list("pk", "source_key")) == [
         (committed_after_the_locks[0], "faq:5")
     ]
+
+
+@pytest.mark.django_db
+def test_embed_pending_with_every_chunk_embedded_returns_0_without_a_backend(
+    settings: "Settings",
+) -> None:
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    assert embed_pending() == 0
