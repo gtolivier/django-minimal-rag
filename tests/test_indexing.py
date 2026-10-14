@@ -1262,3 +1262,22 @@ def test_embed_pending_skips_a_chunk_claimed_within_the_claim_timeout(
     unclaimed_chunk = Chunk.objects.get(text="Unclaimed answer.")
     assert unclaimed_chunk.embedding_model == "recording"
     assert list(unclaimed_chunk.embedding) == [0.0, 1.0]
+
+
+@pytest.mark.django_db
+def test_embed_pending_embeds_a_chunk_whose_claim_is_older_than_the_claim_timeout(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Abandoned answer."])
+    # Another run claimed this chunk twenty minutes ago and never embedded it.
+    claimed_at = timezone.now() - datetime.timedelta(minutes=20)
+    Chunk.objects.update(embedding_claimed_at=claimed_at)
+
+    embedded_count = embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+
+    assert embedded_count == 1
+    assert calls == [["Abandoned answer."]]
+    chunk = Chunk.objects.get()
+    assert chunk.embedding_model == "recording"
+    assert list(chunk.embedding) == [0.0, 1.0]
