@@ -1291,6 +1291,47 @@ def test_embed_pending_gives_no_vector_to_a_chunk_deleted_during_its_backend_cal
 
 
 @pytest.mark.django_db
+def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_chunks(
+    settings: "Settings",
+) -> None:
+    claimed_texts = ["Answer to question 1.", "More on question 1."]
+    store_pending_chunks("faq:1", claimed_texts)
+    calls: list[list[str]] = []
+    second_run_counts: list[int] = []
+
+    def run_a_second_embed_pending() -> None:
+        # Only during the first run's backend call: the second run's own
+        # backend call comes back here too.
+        if len(calls) > 1:
+            return
+        # Stored once the first run has claimed its batch, so left to the second.
+        store_pending_chunks("faq:2", ["Answer to question 2."])
+        second_run_counts.append(embed_pending())
+
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": run_a_second_embed_pending, "calls": calls},
+    }
+
+    first_run_count = embed_pending()
+
+    assert first_run_count == 2
+    assert second_run_counts == [1]
+    first_call, *second_run_calls = calls
+    assert sorted(first_call) == claimed_texts
+    assert second_run_calls == [["Answer to question 2."]]
+    # InterleavingEmbeddings gives each text its length.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        "Answer to question 1.": ("interleaving", [21.0, 1.0]),
+        "More on question 1.": ("interleaving", [19.0, 1.0]),
+        "Answer to question 2.": ("interleaving", [21.0, 1.0]),
+    }
+
+
+@pytest.mark.django_db
 def test_embed_pending_skips_a_chunk_claimed_within_the_claim_timeout(
     settings: "Settings",
 ) -> None:

@@ -76,15 +76,25 @@ class InterleavingEmbeddings:
     ``during_embed`` stands for what other processes do while the backend is
     busy, such as deleting a source whose chunks are being embedded. Each text
     gets its length as its vector.
+
+    When a ``calls`` list is given, each ``embed()`` call appends the list of
+    the texts it was given to it, before running ``during_embed``.
     """
 
     model = "interleaving"
 
-    def __init__(self, during_embed: Callable[[], object]) -> None:
+    def __init__(
+        self,
+        during_embed: Callable[[], object],
+        calls: list[list[str]] | None = None,
+    ) -> None:
         self.during_embed = during_embed
+        self.calls = calls
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Run ``during_embed``, then return one vector per text."""
+        if self.calls is not None:
+            self.calls.append(list(texts))
         self.during_embed()
         return [[float(len(text)), 1.0] for text in texts]
 
