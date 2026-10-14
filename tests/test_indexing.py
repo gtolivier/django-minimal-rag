@@ -676,6 +676,30 @@ def test_replace_in_a_transaction_embeds_its_chunks_only_once_that_transaction_c
     )
 
 
+@pytest.mark.django_db
+def test_replace_embeds_only_its_own_chunks_leaving_another_sources_pending_chunk(
+    settings: "Settings",
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+    embedded = use_recording_embeddings(settings)
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    assert embedded == ["Answer to question 1."]
+    assert {
+        chunk.document.source.source_key: (
+            chunk.text,
+            chunk.embedding_model,
+            None if chunk.embedding is None else list(chunk.embedding),
+        )
+        for chunk in Chunk.objects.select_related("document__source")
+    } == {
+        "faq:1": ("Answer to question 1.", "recording", [0.0, 1.0]),
+        "faq:2": ("Answer to question 2.", "", None),
+    }
+
+
 @pytest.mark.parametrize(
     "non_bool",
     [
