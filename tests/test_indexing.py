@@ -24,7 +24,9 @@ from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import MutableDocument, SampleDocument
 from tests.embeddings import (
     EmbeddingFailedError,
+    use_failing_embeddings,
     use_fake_embeddings,
+    use_interleaving_embeddings,
     use_miscounting_embeddings,
 )
 from tests.indexing import replace_and_run_on_commit
@@ -105,6 +107,11 @@ def store_pending_chunks(source_key: str, texts: Iterable[str]) -> None:
         )
         for rank, text in enumerate(texts)
     )
+
+
+def remove_faq_2() -> None:
+    """Remove the source "faq:2", as another process would while it is embedded."""
+    Source.objects.filter(source_key="faq:2").delete()
 
 
 def stored_content(source: Source) -> tuple[list[object], list[object]]:
@@ -714,10 +721,7 @@ def test_replace_raises_the_backend_error_after_storing_its_texts_without_a_vect
     settings: "Settings",
 ) -> None:
     # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.FailingEmbeddings",
-        "OPTIONS": {"failing_text": "Answer to question 1."},
-    }
+    use_failing_embeddings(settings, "Answer to question 1.")
 
     with pytest.raises(EmbeddingFailedError):
         replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
@@ -825,10 +829,7 @@ def test_replace_holds_no_source_row_lock_while_the_backend_embeds_by_default(
     def record_the_locked_sources() -> None:
         locked_during_each_call.append(source_keys_locked_against(other_connection))
 
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
-        "OPTIONS": {"during_embed": record_the_locked_sources},
-    }
+    use_interleaving_embeddings(settings, record_the_locked_sources)
 
     Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
 
@@ -1357,10 +1358,7 @@ def test_embed_pending_raises_and_stores_no_vector_when_the_backend_miscounts(
 def test_embed_pending_raises_the_backend_error_and_leaves_the_batch_to_the_next_run(
     settings: "Settings",
 ) -> None:
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.FailingEmbeddings",
-        "OPTIONS": {"failing_text": "Answer to question 2."},
-    }
+    use_failing_embeddings(settings, "Answer to question 2.")
     texts = ["Answer to question 1.", "Answer to question 2."]
     store_pending_chunks("faq:1", texts)
 
@@ -1398,10 +1396,7 @@ def test_embed_pending_keeps_the_vectors_of_earlier_batches_when_a_later_one_fai
     settings: "Settings",
 ) -> None:
     calls: list[list[str]] = []
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.FailingEmbeddings",
-        "OPTIONS": {"failing_text": "Answer to question 4.", "calls": calls},
-    }
+    use_failing_embeddings(settings, "Answer to question 4.", calls)
     texts = [f"Answer to question {number}." for number in range(1, 5)]
     # Stored last, the failing text's chunk is taken in a later batch.
     store_pending_chunks("faq:1", texts)
@@ -1432,15 +1427,7 @@ def test_embed_pending_gives_no_vector_to_a_chunk_deleted_during_its_backend_cal
 ) -> None:
     store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
     store_pending_chunks("faq:2", ["Answer to question 2."])
-
-    def remove_faq_2() -> None:
-        # The source is removed while its chunk is being embedded.
-        Source.objects.filter(source_key="faq:2").delete()
-
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
-        "OPTIONS": {"during_embed": remove_faq_2},
-    }
+    use_interleaving_embeddings(settings, remove_faq_2)
 
     embed_pending()
 
@@ -1461,15 +1448,7 @@ def test_embed_pending_does_not_count_a_chunk_deleted_during_its_backend_call(
 ) -> None:
     store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
     store_pending_chunks("faq:2", ["Answer to question 2."])
-
-    def remove_faq_2() -> None:
-        # The source is removed while its chunk is being embedded.
-        Source.objects.filter(source_key="faq:2").delete()
-
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
-        "OPTIONS": {"during_embed": remove_faq_2},
-    }
+    use_interleaving_embeddings(settings, remove_faq_2)
 
     embedded_count = embed_pending()
 
@@ -1495,10 +1474,7 @@ def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_ch
         store_pending_chunks("faq:2", ["Answer to question 2."])
         second_run_counts.append(embed_pending())
 
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
-        "OPTIONS": {"during_embed": run_a_second_embed_pending, "calls": calls},
-    }
+    use_interleaving_embeddings(settings, run_a_second_embed_pending, calls)
 
     first_run_count = embed_pending()
 
@@ -1537,10 +1513,7 @@ def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
             )
         )
 
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
-        "OPTIONS": {"during_embed": record_which_chunks_are_claimed, "calls": calls},
-    }
+    use_interleaving_embeddings(settings, record_which_chunks_are_claimed, calls)
 
     embed_pending(batch_size=2)
 

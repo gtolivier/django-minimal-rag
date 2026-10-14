@@ -187,3 +187,33 @@ def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
         "BACKEND": "tests.embeddings.MiscountingEmbeddings",
         "OPTIONS": {"vector_count": vector_count},
     }
+
+
+def use_failing_embeddings(
+    settings: "Settings",
+    failing_text: str,
+    calls: list[list[str]] | None = None,
+) -> None:
+    """Configure ``FailingEmbeddings``, raising when asked to embed ``failing_text``.
+
+    When a ``calls`` list is given, each call is recorded in it.
+    """
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.FailingEmbeddings",
+        "OPTIONS": {"failing_text": failing_text, "calls": calls},
+    }
+
+
+def use_interleaving_embeddings(
+    settings: "Settings",
+    during_embed: Callable[[], object],
+    calls: list[list[str]] | None = None,
+) -> None:
+    """Configure ``InterleavingEmbeddings``, running ``during_embed`` in each call.
+
+    When a ``calls`` list is given, each call is recorded in it.
+    """
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": during_embed, "calls": calls},
+    }
