@@ -5,6 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.db.models.functions import Collate
@@ -268,6 +269,12 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
+    if getattr(settings, "MINIMAL_RAG_DEFER_EMBEDDING", False):
+        Chunk.objects.bulk_create(
+            Chunk(document=stored_document, rank=rank, text=text)
+            for rank, stored_document, text in ranked_pieces
+        )
+        return
     Chunk.objects.bulk_create(
         Chunk(
             document=stored_document,
