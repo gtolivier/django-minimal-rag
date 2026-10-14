@@ -1276,6 +1276,21 @@ def test_embed_pending_with_a_batch_size_embeds_the_chunks_in_calls_of_that_size
     }
 
 
+@pytest.mark.django_db
+def test_embed_pending_without_a_batch_size_embeds_in_calls_of_at_most_100_chunks(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    texts = [f"Answer to question {number}." for number in range(1, 102)]
+    store_pending_chunks("faq:1", texts)
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 101
+    assert [len(call) for call in calls] == [100, 1]
+    assert sorted(text for call in calls for text in call) == sorted(texts)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_embed_pending_calls_the_backend_with_no_transaction_open(
     settings: "Settings",
