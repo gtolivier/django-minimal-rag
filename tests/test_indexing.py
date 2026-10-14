@@ -1056,3 +1056,25 @@ def test_embed_pending_embeds_the_pending_chunks_of_several_sources_in_one_call(
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded_texts)
     }
+
+
+@pytest.mark.django_db
+def test_embed_pending_leaves_a_chunk_embedded_by_another_model_as_it_is(
+    settings: "Settings",
+) -> None:
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+    embedded_chunk = Chunk.objects.get()
+    calls = use_call_recording_embeddings(settings)
+    assert embedded_chunk.embedding_model != "recording"
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 1
+    assert calls == [["Answer to question 2."]]
+    kept_chunk = Chunk.objects.get(pk=embedded_chunk.pk)
+    assert kept_chunk.embedding_model == embedded_chunk.embedding_model
+    assert list(kept_chunk.embedding) == list(embedded_chunk.embedding)
+    pending_chunk = Chunk.objects.get(text="Answer to question 2.")
+    assert pending_chunk.embedding_model == "recording"
+    assert list(pending_chunk.embedding) == [0.0, 1.0]
