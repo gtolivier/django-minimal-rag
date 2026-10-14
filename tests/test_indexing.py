@@ -80,6 +80,30 @@ def paragraphs_of_one_chunk_each(count: int) -> list[str]:
     return [f"Paragraph {number}: " + "word " * 120 for number in range(count)]
 
 
+def store_pending_chunks(source_key: str, texts: Iterable[str]) -> None:
+    """Store a source of one document whose chunks, of ``texts``, await a vector.
+
+    Each chunk is stored as before its embedding: no vector, no model.
+    """
+    source = Source.objects.create(source_key=source_key)
+    document = Document.objects.create(
+        source=source,
+        title=f"Document of {source_key}",
+        url=f"https://example.com/{source_key}/",
+        language="en",
+    )
+    Chunk.objects.bulk_create(
+        Chunk(
+            document=document,
+            rank=rank,
+            text=text,
+            embedding=None,
+            embedding_model="",
+        )
+        for rank, text in enumerate(texts)
+    )
+
+
 def stored_content(source: Source) -> tuple[list[object], list[object]]:
     """The documents and chunks stored under ``source``, ordered by primary key."""
     documents: list[object] = list(
@@ -1004,3 +1028,31 @@ def test_embed_pending_gives_a_chunk_without_a_vector_the_backend_vector_and_mod
     assert embedded_count == 1
     assert chunk.embedding_model == "fake-3"
     assert list(chunk.embedding) == expected_vector
+
+
+@pytest.mark.django_db
+def test_embed_pending_embeds_the_pending_chunks_of_several_sources_in_one_call(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 3
+    assert len(calls) == 1
+    [embedded_texts] = calls
+    assert sorted(embedded_texts) == [
+        "Answer to question 1.",
+        "Answer to question 2.",
+        "More on question 1.",
+    ]
+    # RecordingEmbeddings gives each text its position in the call.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded_texts)
+    }
