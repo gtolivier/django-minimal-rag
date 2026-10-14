@@ -1,12 +1,14 @@
 """Indexing of documents into the storage models."""
 
+import datetime
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.db.models.functions import Collate
+from django.utils import timezone
 
 from django_minimal_rag.chunking import split_text
 from django_minimal_rag.documents import Document as DocumentProtocol
@@ -52,13 +54,22 @@ class Indexer:
             _store_all_chunks(plans, embeddings)
 
 
-def embed_pending(batch_size: int | None = None) -> int:
+def embed_pending(
+    batch_size: int | None = None, claim_timeout: datetime.timedelta | None = None
+) -> int:
     """Embed the chunks still waiting for a vector; return how many were.
 
     With ``batch_size``, embed them in calls of at most that many chunks.
+    With ``claim_timeout``, skip the chunks claimed more recently than that.
     """
     _check_batch_size(batch_size)
-    pending = list(Chunk.objects.filter(embedding__isnull=True))
+    queryset = Chunk.objects.filter(embedding__isnull=True)
+    if claim_timeout is not None:
+        queryset = queryset.filter(
+            Q(embedding_claimed_at__isnull=True)
+            | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
+        )
+    pending = list(queryset)
     if not pending:
         return 0
     embeddings = get_embeddings()
