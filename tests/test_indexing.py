@@ -642,6 +642,32 @@ def test_replace_with_defer_embedding_false_embeds_the_new_texts_as_when_unset(
     assert list(chunk.embedding) == expected_vector
 
 
+@pytest.mark.django_db(transaction=True)
+def test_replace_in_a_transaction_embeds_its_chunks_only_once_that_transaction_commits(
+    settings: "Settings",
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
+    calls = use_call_recording_embeddings(settings)
+
+    with transaction.atomic():
+        Indexer().replace({"faq:1": [faq_entry(1)]})
+        calls_before_the_commit = list(calls)
+        chunks_before_the_commit = list(
+            Chunk.objects.values_list("text", "embedding", "embedding_model")
+        )
+
+    assert calls_before_the_commit == []
+    assert chunks_before_the_commit == [("Answer to question 1.", None, "")]
+    assert calls == [["Answer to question 1."]]
+    # RecordingEmbeddings gives each text its position in the call.
+    chunk = Chunk.objects.get()
+    assert (chunk.text, chunk.embedding_model, list(chunk.embedding)) == (
+        "Answer to question 1.",
+        "recording",
+        [0.0, 1.0],
+    )
+
+
 @pytest.mark.parametrize(
     "non_bool",
     [
