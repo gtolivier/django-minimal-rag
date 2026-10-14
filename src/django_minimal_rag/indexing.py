@@ -75,7 +75,7 @@ def embed_pending(
     _check_batch_size(batch_size)
     chunks_per_call = batch_size or DEFAULT_BATCH_SIZE
     embedded = 0
-    embeddings = None
+    embeddings: Embeddings | None = None  # built only if a chunk is pending
     while batch := _claim_pending_chunks(claim_timeout, chunks_per_call):
         try:
             if embeddings is None:
