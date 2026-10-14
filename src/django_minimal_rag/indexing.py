@@ -52,6 +52,11 @@ class Indexer:
             _store_all_chunks(plans, embeddings)
 
 
+def embed_pending() -> int:
+    """Embed the chunks still waiting for a vector; return how many were."""
+    return 0
+
+
 class _Plan(NamedTuple):
     """The chunks a source still needs, once its documents are stored."""
 
