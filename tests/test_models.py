@@ -328,6 +328,19 @@ def test_chunk_without_an_embedding_cannot_be_stored(document: Document) -> None
 
 
 @pytest.mark.django_db
+def test_chunk_stored_without_an_embedding_nor_a_model_reads_back_as_not_embedded(
+    document: Document,
+) -> None:
+    Chunk.objects.create(document=document, rank=0, text="The shop opens at 9 am.")
+
+    stored = Chunk.objects.get()
+
+    assert stored.embedding is None
+    assert stored.embedding_model == ""
+    assert stored.embedding_claimed_at is None
+
+
+@pytest.mark.django_db
 def test_str_of_a_chunk_with_an_80_character_text_is_its_text(
     document: Document,
 ) -> None:
