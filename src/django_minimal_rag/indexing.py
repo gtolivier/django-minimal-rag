@@ -267,7 +267,8 @@ def _split_documents(
 def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
     """Store the chunks of all ``plans``, each source's pieces ranked in order.
 
-    With the ``DEFER_EMBEDDING_SETTING`` setting true, store them without a vector.
+    With the ``DEFER_EMBEDDING_SETTING`` setting true, a text without a stored
+    vector is stored without one, instead of being embedded now.
     """
     ranked_pieces = (
         (rank, stored_document, text)
@@ -275,23 +276,7 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
     if getattr(settings, DEFER_EMBEDDING_SETTING, False):
-        stored_vectors = {
-            text: vector
-            for plan in plans
-            for text, vector in plan.stored_vectors.items()
-        }
-        Chunk.objects.bulk_create(
-            Chunk(
-                document=stored_document,
-                rank=rank,
-                text=text,
-                embedding_model=embeddings.model,
-                embedding=stored_vectors[text],
-            )
-            if text in stored_vectors
-            else Chunk(document=stored_document, rank=rank, text=text)
-            for rank, stored_document, text in ranked_pieces
-        )
+        _store_chunks_deferring_embedding(ranked_pieces, plans, embeddings)
         return
     Chunk.objects.bulk_create(
         Chunk(
@@ -304,6 +289,33 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for (rank, stored_document, text), vector in zip(
             ranked_pieces, _vectors(plans, embeddings), strict=True
         )
+    )
+
+
+def _store_chunks_deferring_embedding(
+    ranked_pieces: Iterable[tuple[int, Document, str]],
+    plans: Sequence[_Plan],
+    embeddings: Embeddings,
+) -> None:
+    """Store ``ranked_pieces`` as chunks, without embedding any text.
+
+    A text with a vector stored in one of ``plans`` keeps it; any other text is
+    stored without a vector.
+    """
+    stored_vectors = {
+        text: vector for plan in plans for text, vector in plan.stored_vectors.items()
+    }
+    Chunk.objects.bulk_create(
+        Chunk(
+            document=stored_document,
+            rank=rank,
+            text=text,
+            embedding_model=embeddings.model,
+            embedding=stored_vectors[text],
+        )
+        if text in stored_vectors
+        else Chunk(document=stored_document, rank=rank, text=text)
+        for rank, stored_document, text in ranked_pieces
     )
 
 
