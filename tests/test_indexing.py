@@ -1165,3 +1165,43 @@ def test_embed_pending_raises_and_stores_no_vector_when_the_backend_miscounts(
         ("Answer to question 1.", None, ""),
         ("Answer to question 2.", None, ""),
     ]
+
+
+@pytest.mark.django_db
+def test_embed_pending_raises_the_backend_error_and_leaves_the_batch_to_the_next_run(
+    settings: "Settings",
+) -> None:
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.FailingEmbeddings",
+        "OPTIONS": {"failing_text": "Answer to question 2."},
+    }
+    texts = ["Answer to question 1.", "Answer to question 2."]
+    store_pending_chunks("faq:1", texts)
+
+    with pytest.raises(EmbeddingFailedError):
+        embed_pending()
+
+    # Neither embedded nor claimed: no run is kept from taking them.
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model", "embedding_claimed_at"
+        )
+    ) == [
+        ("Answer to question 1.", None, "", None),
+        ("Answer to question 2.", None, "", None),
+    ]
+    calls = use_call_recording_embeddings(settings)
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 2
+    [embedded_texts] = calls
+    assert sorted(embedded_texts) == texts
+    # RecordingEmbeddings gives each text its position in the call.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded_texts)
+    }
