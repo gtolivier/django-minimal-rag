@@ -20,7 +20,7 @@ from django_minimal_rag.models import Chunk, Document, Source
 MODEL_LABEL_SEPARATOR = ":"
 """What ends the model label at the start of a source key."""
 DEFER_EMBEDDING_SETTING = "MINIMAL_RAG_DEFER_EMBEDDING"
-"""When true, replace() stores chunks without a vector, for embed_pending()."""
+"""When true, replace() does not run embed_pending() once it commits."""
 
 
 class Indexer:
@@ -268,15 +268,16 @@ def _split_documents(
 def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
     """Store the chunks of all ``plans``, each source's pieces ranked in order.
 
-    With the ``DEFER_EMBEDDING_SETTING`` setting true, a text without a stored
-    vector is stored without one, instead of being embedded now.
+    A text without a stored vector is stored without one. Unless the
+    ``DEFER_EMBEDDING_SETTING`` setting is true, embed_pending() embeds it once
+    the transaction commits.
     """
     ranked_pieces = (
         (rank, stored_document, text)
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
-    _store_chunks_deferring_embedding(ranked_pieces, plans, embeddings)
+    _store_chunks_without_embedding(ranked_pieces, plans, embeddings)
     if not _is_embedding_deferred():
         transaction.on_commit(embed_pending)
 
@@ -290,7 +291,7 @@ def _is_embedding_deferred() -> bool:
     return defer_embedding
 
 
-def _store_chunks_deferring_embedding(
+def _store_chunks_without_embedding(
     ranked_pieces: Iterable[tuple[int, Document, str]],
     plans: Sequence[_Plan],
     embeddings: Embeddings,
