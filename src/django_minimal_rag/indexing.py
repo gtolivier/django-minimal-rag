@@ -63,13 +63,7 @@ def embed_pending(
     With ``claim_timeout``, skip the chunks claimed more recently than that.
     """
     _check_batch_size(batch_size)
-    queryset = Chunk.objects.filter(embedding__isnull=True)
-    if claim_timeout is not None:
-        queryset = queryset.filter(
-            Q(embedding_claimed_at__isnull=True)
-            | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
-        )
-    pending = list(queryset)
+    pending = list(_pending_chunks(claim_timeout))
     if not pending:
         return 0
     embeddings = get_embeddings()
@@ -77,6 +71,21 @@ def embed_pending(
     for start in range(0, len(pending), chunks_per_call):
         _embed_chunks(pending[start : start + chunks_per_call], embeddings)
     return len(pending)
+
+
+def _pending_chunks(claim_timeout: datetime.timedelta | None) -> QuerySet[Chunk]:
+    """Return the chunks waiting for a vector, without those claimed recently.
+
+    A chunk is claimed recently when it was claimed less than ``claim_timeout``
+    ago; without ``claim_timeout``, no chunk is left out.
+    """
+    waiting = Chunk.objects.filter(embedding__isnull=True)
+    if claim_timeout is None:
+        return waiting
+    return waiting.filter(
+        Q(embedding_claimed_at__isnull=True)
+        | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
+    )
 
 
 def _check_batch_size(batch_size: int | None) -> None:
