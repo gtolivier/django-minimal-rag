@@ -65,7 +65,8 @@ def embed_pending(
 ) -> int:
     """Embed the chunks still waiting for a vector; return how many were.
 
-    Embed them in calls of at most ``batch_size`` chunks (100 by default).
+    Embed them in calls of at most ``batch_size`` chunks
+    (``DEFAULT_BATCH_SIZE`` by default).
     With ``claim_timeout``, skip the chunks claimed more recently than that.
     """
     _check_batch_size(batch_size)
