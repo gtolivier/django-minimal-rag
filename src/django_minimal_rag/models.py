@@ -55,8 +55,27 @@ class Chunk(models.Model):
     document = models.ForeignKey(Document, on_delete=models.CASCADE)
     rank = models.PositiveIntegerField()
     text = models.TextField()
-    embedding_model = models.CharField(max_length=EMBEDDING_MODEL_MAX_LENGTH)
-    embedding = VectorField()
+    embedding_model = models.CharField(
+        max_length=EMBEDDING_MODEL_MAX_LENGTH, default=""
+    )
+    embedding = VectorField(null=True)
+    embedding_claimed_at = models.DateTimeField(null=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(embedding__isnull=False)
+                | models.Q(embedding_model=""),
+                name="chunk_embedding_required_once_model_set",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["id"],
+                condition=models.Q(embedding__isnull=True),
+                name="chunk_unembedded_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return _shorten_for_str(self.text)

@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import pytest
-from django.db import DataError, IntegrityError
+from django.db import DataError, IntegrityError, connection
 
 from django_minimal_rag.embeddings import FakeEmbeddings
 from django_minimal_rag.models import Chunk, Document, Source
@@ -44,6 +44,31 @@ def create_chunk(
         embedding_model=embedding_model,
         embedding=list(embedding),
     )
+
+
+def index_predicates_on_columns(table: str, columns: list[str]) -> list[str | None]:
+    """Return the predicate of each index of ``table`` on exactly ``columns``.
+
+    The predicate is PostgreSQL's rendering of the index's WHERE clause, or
+    None for an index that is not partial.
+    """
+    with connection.cursor() as cursor:
+        constraints = connection.introspection.get_constraints(cursor, table)
+        index_names = [
+            name
+            for name, constraint in constraints.items()
+            if constraint["index"] and constraint["columns"] == columns
+        ]
+        cursor.execute(
+            """
+            SELECT pg_get_expr(idx.indpred, idx.indrelid)
+            FROM pg_index AS idx
+            JOIN pg_class AS index_class ON index_class.oid = idx.indexrelid
+            WHERE idx.indrelid = %s::regclass AND index_class.relname = ANY(%s)
+            """,
+            [table, index_names],
+        )
+        return [predicate for (predicate,) in cursor.fetchall()]
 
 
 @pytest.fixture
@@ -328,6 +353,19 @@ def test_chunk_without_an_embedding_cannot_be_stored(document: Document) -> None
 
 
 @pytest.mark.django_db
+def test_chunk_stored_without_an_embedding_nor_a_model_reads_back_as_not_embedded(
+    document: Document,
+) -> None:
+    Chunk.objects.create(document=document, rank=0, text="The shop opens at 9 am.")
+
+    stored = Chunk.objects.get()
+
+    assert stored.embedding is None
+    assert stored.embedding_model == ""
+    assert stored.embedding_claimed_at is None
+
+
+@pytest.mark.django_db
 def test_str_of_a_chunk_with_an_80_character_text_is_its_text(
     document: Document,
 ) -> None:
@@ -364,3 +402,17 @@ def test_deleting_a_document_deletes_its_chunks(document: Document) -> None:
     document.delete()
 
     assert not Chunk.objects.exists()
+
+
+@pytest.mark.django_db
+def test_chunk_table_has_a_partial_index_on_the_primary_key_of_unembedded_chunks() -> (
+    None
+):
+    # embed_pending() looks for the chunks waiting for a vector: this index
+    # finds them without scanning the whole table.
+    primary_key_column = Chunk._meta.pk.column
+    assert primary_key_column is not None
+
+    predicates = index_predicates_on_columns(Chunk._meta.db_table, [primary_key_column])
+
+    assert "(embedding IS NULL)" in predicates

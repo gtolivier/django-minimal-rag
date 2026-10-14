@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 import pytest
 from django.db.models import F
 
-from django_minimal_rag.indexing import Indexer
 from django_minimal_rag.models import Chunk
 from django_minimal_rag.retrieval import retrieve
 from tests.documents import public_page
@@ -13,6 +12,7 @@ from tests.embeddings import (
     use_fake_embeddings,
     use_miscounting_embeddings,
 )
+from tests.indexing import replace_and_run_on_commit
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.usefixtures("fake_embeddings")
 
 def index_public_pages(*texts: str) -> None:
     """Index a public page holding each of ``texts``, in order, under "page:1"."""
-    Indexer().replace({"page:1": [public_page(text) for text in texts]})
+    replace_and_run_on_commit({"page:1": [public_page(text) for text in texts]})
 
 
 @pytest.mark.django_db
@@ -57,7 +57,7 @@ def test_each_retrieved_chunk_carries_its_document_title_url_and_source_key(
     question = "When does the shop open?"
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.1]})
     document = public_page(chunk_text)
-    Indexer().replace({document.source_key: [document]})
+    replace_and_run_on_commit({document.source_key: [document]})
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=0.1)
 
@@ -215,7 +215,7 @@ def test_chunks_at_the_same_distance_are_ordered_by_document_id_then_rank(
     # The ranks are those of a source's chunks: the second document's chunk
     # has rank 2, the third's rank 0. Ordering by rank alone would put the
     # third document's chunk second.
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "page:1": [
                 public_page(f"{first_opening}\n\n{first_closing}"),
@@ -299,15 +299,39 @@ def test_retrieve_ignores_chunks_embedded_by_another_model_even_of_another_dimen
     # model, and "fake-3" gives 3. Fake vectors have no negative component, so
     # the 2-dimension one is within a cosine distance of 1.0 of the question.
     use_fake_embeddings(settings, dimensions=2)
-    Indexer().replace({"page:1": [public_page(same_dimension_text, "page:1")]})
+    replace_and_run_on_commit({"page:1": [public_page(same_dimension_text, "page:1")]})
     use_fake_embeddings(settings, dimensions=3)
-    Indexer().replace({"page:2": [public_page(other_dimension_text, "page:2")]})
+    replace_and_run_on_commit({"page:2": [public_page(other_dimension_text, "page:2")]})
     use_chosen_embeddings(settings, {current_text: [1.0, 0.0], question: [1.0, 0.0]})
-    Indexer().replace({"page:3": [public_page(current_text, "page:3")]})
+    replace_and_run_on_commit({"page:3": [public_page(current_text, "page:3")]})
 
     retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
 
     assert [chunk.text for chunk in retrieved] == [current_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_ignores_a_chunk_without_a_vector_and_returns_the_embedded_ones(
+    settings: "Settings",
+) -> None:
+    embedded_text = "The shop opens at nine."
+    pending_text = "The shop opens at eight on Saturdays."
+    question = "When does the shop open?"
+    use_chosen_embeddings(settings, {embedded_text: [1.0, 0.0], question: [1.0, 0.0]})
+    index_public_pages(embedded_text)
+    # A chunk stored before its embedding: no vector, no model.
+    embedded_chunk = Chunk.objects.get(text=embedded_text)
+    Chunk.objects.create(
+        document=embedded_chunk.document,
+        rank=embedded_chunk.rank + 1,
+        text=pending_text,
+        embedding=None,
+        embedding_model="",
+    )
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
+
+    assert [chunk.text for chunk in retrieved] == [embedded_text]
 
 
 @pytest.mark.django_db
@@ -327,7 +351,7 @@ def test_retrieve_leaves_out_a_chunk_requiring_a_permission_the_reader_lacks(
     secret_page = replace(
         public_page(secret_text), permissions=frozenset({"app.view_secret"})
     )
-    Indexer().replace({"page:1": [secret_page, public_page(public_text)]})
+    replace_and_run_on_commit({"page:1": [secret_page, public_page(public_text)]})
 
     retrieved = retrieve(
         question,
@@ -350,7 +374,7 @@ def test_retrieve_returns_a_chunk_only_to_a_reader_holding_all_its_permissions(
         public_page(chunk_text),
         permissions=frozenset({"app.view_a", "app.view_b"}),
     )
-    Indexer().replace({"page:1": [page]})
+    replace_and_run_on_commit({"page:1": [page]})
 
     retrieved_by_full_reader = retrieve(
         question,

@@ -1,7 +1,9 @@
 """The test bench's embedding backends, and helpers configuring them for a test."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
+
+from django.db import connection
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -47,6 +49,56 @@ class RecordingEmbeddings:
         return vectors
 
 
+class TransactionProbingEmbeddings:
+    """A backend recording, on each call, whether a transaction is open.
+
+    Each ``embed()`` call appends to ``transaction_open`` whether the default
+    database connection was in a transaction when it was made: in an atomic
+    block, or out of autocommit mode.
+    """
+
+    model = "transaction-probing"
+
+    def __init__(self, transaction_open: list[bool]) -> None:
+        self.transaction_open = transaction_open
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Record whether a transaction is open; return one vector per text."""
+        self.transaction_open.append(
+            connection.in_atomic_block or not connection.get_autocommit()
+        )
+        return [[float(len(text)), 1.0] for text in texts]
+
+
+class InterleavingEmbeddings:
+    """A backend running ``during_embed`` inside each ``embed()`` call.
+
+    ``during_embed`` stands for what other processes do while the backend is
+    busy, such as deleting a source whose chunks are being embedded. Each text
+    gets its length as its vector.
+
+    When a ``calls`` list is given, each ``embed()`` call appends the list of
+    the texts it was given to it, before running ``during_embed``.
+    """
+
+    model = "interleaving"
+
+    def __init__(
+        self,
+        during_embed: Callable[[], object],
+        calls: list[list[str]] | None = None,
+    ) -> None:
+        self.during_embed = during_embed
+        self.calls = calls
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Run ``during_embed``, then return one vector per text."""
+        if self.calls is not None:
+            self.calls.append(list(texts))
+        self.during_embed()
+        return [[float(len(text)), 1.0] for text in texts]
+
+
 class EmbeddingFailedError(Exception):
     """The error raised by ``FailingEmbeddings``."""
 
@@ -55,15 +107,21 @@ class FailingEmbeddings:
     """A backend raising ``EmbeddingFailedError`` when asked to embed ``failing_text``.
 
     Any other text gets a vector, so the texts embedded before it succeed.
+
+    When a ``calls`` list is given, each ``embed()`` call appends the list of
+    the texts it was given to it, the failing call included.
     """
 
     model = "failing"
 
-    def __init__(self, failing_text: str) -> None:
+    def __init__(self, failing_text: str, calls: list[list[str]] | None = None) -> None:
         self.failing_text = failing_text
+        self.calls = calls
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one vector per text, or raise if ``failing_text`` is among them."""
+        if self.calls is not None:
+            self.calls.append(list(texts))
         if self.failing_text in texts:
             msg = f"Cannot embed {self.failing_text!r}."
             raise EmbeddingFailedError(msg)
@@ -128,4 +186,47 @@ def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
     settings.MINIMAL_RAG_EMBEDDINGS = {
         "BACKEND": "tests.embeddings.MiscountingEmbeddings",
         "OPTIONS": {"vector_count": vector_count},
+    }
+
+
+def use_transaction_probing_embeddings(settings: "Settings") -> list[bool]:
+    """Configure ``TransactionProbingEmbeddings``; return the list it records in.
+
+    Each ``embed()`` call records whether a transaction was open when it was made.
+    """
+    transaction_open: list[bool] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.TransactionProbingEmbeddings",
+        "OPTIONS": {"transaction_open": transaction_open},
+    }
+    return transaction_open
+
+
+def use_failing_embeddings(
+    settings: "Settings",
+    failing_text: str,
+    calls: list[list[str]] | None = None,
+) -> None:
+    """Configure ``FailingEmbeddings``, raising when asked to embed ``failing_text``.
+
+    When a ``calls`` list is given, each call is recorded in it.
+    """
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.FailingEmbeddings",
+        "OPTIONS": {"failing_text": failing_text, "calls": calls},
+    }
+
+
+def use_interleaving_embeddings(
+    settings: "Settings",
+    during_embed: Callable[[], object],
+    calls: list[list[str]] | None = None,
+) -> None:
+    """Configure ``InterleavingEmbeddings``, running ``during_embed`` in each call.
+
+    When a ``calls`` list is given, each call is recorded in it.
+    """
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": during_embed, "calls": calls},
     }

@@ -1,4 +1,5 @@
 import dataclasses
+import datetime
 import re
 import threading
 import time
@@ -6,24 +7,31 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.db import (
     DEFAULT_DB_ALIAS,
+    OperationalError,
     connection,
     connections,
     transaction,
 )
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
-from django_minimal_rag.indexing import Indexer
+from django_minimal_rag.indexing import Indexer, embed_pending
 from django_minimal_rag.models import Chunk, Document, Source
 from tests.documents import MutableDocument, SampleDocument
 from tests.embeddings import (
     EmbeddingFailedError,
+    use_failing_embeddings,
     use_fake_embeddings,
+    use_interleaving_embeddings,
     use_miscounting_embeddings,
+    use_transaction_probing_embeddings,
 )
+from tests.indexing import replace_and_run_on_commit
 from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
@@ -77,6 +85,52 @@ def faq_entry_under(source_key: str, number: int) -> SampleDocument:
 def paragraphs_of_one_chunk_each(count: int) -> list[str]:
     """``count`` paragraphs, each too long to share a chunk with another."""
     return [f"Paragraph {number}: " + "word " * 120 for number in range(count)]
+
+
+def store_pending_chunks(source_key: str, texts: Iterable[str]) -> None:
+    """Store a source of one document whose chunks, of ``texts``, await a vector.
+
+    Each chunk is stored as before its embedding: no vector, no model.
+    """
+    source = Source.objects.create(source_key=source_key)
+    document = Document.objects.create(
+        source=source,
+        title=f"Document of {source_key}",
+        url=f"https://example.com/{source_key}/",
+        language="en",
+    )
+    Chunk.objects.bulk_create(
+        Chunk(
+            document=document,
+            rank=rank,
+            text=text,
+            embedding=None,
+            embedding_model="",
+        )
+        for rank, text in enumerate(texts)
+    )
+
+
+def remove_faq_2() -> None:
+    """Remove the source "faq:2", as another process would while it is embedded."""
+    Source.objects.filter(source_key="faq:2").delete()
+
+
+def only_during_the_first_call(
+    calls: list[list[str]], action: Callable[[], None]
+) -> Callable[[], None]:
+    """A ``during_embed`` running ``action`` during the first backend call only.
+
+    ``calls`` is the list ``InterleavingEmbeddings`` records its calls in,
+    each before running ``during_embed``: a later call finds more than one.
+    """
+
+    def run_action_during_the_first_call() -> None:
+        if len(calls) > 1:
+            return
+        action()
+
+    return run_action_during_the_first_call
 
 
 def stored_content(source: Source) -> tuple[list[object], list[object]]:
@@ -170,7 +224,7 @@ def wait_until_a_query_waits_for_a_lock(
 
 @pytest.mark.django_db
 def test_replace_with_no_groups_stores_nothing() -> None:
-    Indexer().replace({})
+    replace_and_run_on_commit({})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -183,19 +237,19 @@ def test_replace_with_no_groups_succeeds_without_an_embedding_backend_configured
 ) -> None:
     del settings.MINIMAL_RAG_EMBEDDINGS
 
-    Indexer().replace({})
+    replace_and_run_on_commit({})
 
 
 @pytest.mark.django_db
 def test_replace_group_of_one_document_creates_source_with_group_key() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     assert list(Source.objects.values_list("source_key", flat=True)) == ["faq:1"]
 
 
 @pytest.mark.django_db
 def test_replace_group_of_one_document_stores_it_under_the_group_source() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     assert list(
         Document.objects.values_list("source__source_key", "title", "url", "language")
@@ -204,7 +258,7 @@ def test_replace_group_of_one_document_stores_it_under_the_group_source() -> Non
 
 @pytest.mark.django_db
 def test_replace_stores_each_group_under_its_own_source() -> None:
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "faq:1": [faq_entry(1)],
             "faq:2": [faq_entry(2), faq_entry_under("faq:2", 3)],
@@ -224,10 +278,10 @@ def test_replace_stores_each_group_under_its_own_source() -> None:
 
 @pytest.mark.django_db
 def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
     source_pk = Source.objects.get().pk
 
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry_under("faq:1", 2), faq_entry_under("faq:1", 3)]}
     )
 
@@ -246,9 +300,9 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
 
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
-    Indexer().replace({"faq:1": []})
+    replace_and_run_on_commit({"faq:1": []})
 
     assert not Source.objects.filter(source_key="faq:1").exists()
     assert not Document.objects.exists()
@@ -257,7 +311,7 @@ def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
 
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_for_an_unknown_key_stores_nothing() -> None:
-    Indexer().replace({"faq:1": []})
+    replace_and_run_on_commit({"faq:1": []})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -268,10 +322,10 @@ def test_replace_with_an_empty_group_for_an_unknown_key_stores_nothing() -> None
 def test_replace_with_only_empty_groups_removes_sources_without_a_backend_configured(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
     del settings.MINIMAL_RAG_EMBEDDINGS
 
-    Indexer().replace({"faq:1": [], "faq:2": []})
+    replace_and_run_on_commit({"faq:1": [], "faq:2": []})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -280,12 +334,12 @@ def test_replace_with_only_empty_groups_removes_sources_without_a_backend_config
 
 @pytest.mark.django_db
 def test_replace_leaves_sources_absent_from_the_call_as_they_are() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
     source = Source.objects.get()
     document = Document.objects.get()
     chunk = Chunk.objects.get()
 
-    Indexer().replace({"faq:2": [faq_entry(2)]})
+    replace_and_run_on_commit({"faq:2": [faq_entry(2)]})
 
     assert Source.objects.filter(source_key="faq:1").get().pk == source.pk
     assert list(
@@ -309,7 +363,7 @@ def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> Non
         faq_entry(1), permissions=frozenset({"faq.view_faq", "app.change_note"})
     )
 
-    Indexer().replace({"faq:1": [document]})
+    replace_and_run_on_commit({"faq:1": [document]})
 
     assert list(Document.objects.values_list("permissions", flat=True)) == [
         ["app.change_note", "faq.view_faq"]
@@ -318,7 +372,7 @@ def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> Non
 
 @pytest.mark.django_db
 def test_replace_stores_a_short_document_text_as_one_chunk_of_rank_0() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     document = Document.objects.get()
     assert list(Chunk.objects.values_list("document", "rank", "text")) == [
@@ -339,7 +393,7 @@ def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> No
     )
     expected = [(chunk.rank, chunk.text) for chunk in chunk_group([long_document])]
 
-    Indexer().replace({"guide:1": [long_document]})
+    replace_and_run_on_commit({"guide:1": [long_document]})
 
     document = Document.objects.get()
     stored = Chunk.objects.filter(document=document).order_by("rank")
@@ -369,7 +423,7 @@ def test_replace_stores_each_document_of_a_group_with_its_chunks_ranked_across()
         permissions=frozenset(),
     )
 
-    Indexer().replace({"guide:1": [two_chunk_document, one_chunk_document]})
+    replace_and_run_on_commit({"guide:1": [two_chunk_document, one_chunk_document]})
 
     stored = Chunk.objects.order_by("rank")
     assert list(stored.values_list("rank", "document__title", "text")) == [
@@ -385,7 +439,7 @@ def test_replace_stores_a_document_given_twice_in_a_group_twice_with_its_chunks(
 ):
     entry = faq_entry(1)
 
-    Indexer().replace({"faq:1": [entry, entry]})
+    replace_and_run_on_commit({"faq:1": [entry, entry]})
 
     first, second = Document.objects.order_by("pk")
     stored = Chunk.objects.order_by("rank")
@@ -401,7 +455,7 @@ def test_replace_stores_all_documents_and_chunks_of_a_group_iterable_only_once()
 ):
     group = SinglePassSequence([faq_entry(1), faq_entry_under("faq:1", 2)])
 
-    Indexer().replace({"faq:1": group})
+    replace_and_run_on_commit({"faq:1": group})
 
     assert sorted(Document.objects.values_list("source__source_key", "title")) == [
         ("faq:1", "Question 1"),
@@ -424,7 +478,7 @@ def test_replace_stores_an_unhashable_document_with_its_chunks() -> None:
         permissions=frozenset(),
     )
 
-    Indexer().replace({"faq:1": [document]})
+    replace_and_run_on_commit({"faq:1": [document]})
 
     assert list(
         Document.objects.values_list("source__source_key", "title", "url", "language")
@@ -442,7 +496,7 @@ def test_replace_embeds_each_chunk_with_the_configured_backend(
     backend = FakeEmbeddings(dimensions=3)
     [expected_vector] = backend.embed(["Answer to question 1."])
 
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     chunk = Chunk.objects.get()
     assert chunk.embedding_model == "fake-3"
@@ -454,13 +508,13 @@ def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     }
     embedded_before = len(embedded)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert embedded[embedded_before:] == []
     assert {
@@ -473,7 +527,7 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "faq:1": [
                 faq_entry(1),
@@ -490,7 +544,7 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
         faq_entry_under("faq:1", 2), text="New answer to question 2."
     )
 
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1), changed_entry, faq_entry_under("faq:1", 3)]}
     )
 
@@ -511,10 +565,10 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
 def test_replace_re_embeds_a_text_stored_under_another_model(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     embedded = use_recording_embeddings(settings)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert sorted(embedded) == ["Answer to question 1.", "Answer to question 2."]
     assert {
@@ -532,13 +586,159 @@ def test_replace_of_several_groups_embeds_the_new_texts_of_all_in_one_backend_ca
 ) -> None:
     calls = use_call_recording_embeddings(settings)
 
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
     )
 
     assert calls == [
         ["Answer to question 1.", "Answer to question 2.", "Answer to question 3."]
     ]
+
+
+@pytest.mark.django_db
+def test_replace_deferring_embedding_stores_new_texts_without_vector_or_backend_call(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = True
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+
+    assert calls == []
+    assert list(
+        Chunk.objects.order_by("text").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_deferring_embedding_keeps_the_stored_vector_of_an_unchanged_text(
+    settings: "Settings",
+) -> None:
+    use_recording_embeddings(settings)
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+    vector_before = list(Chunk.objects.get().embedding)
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = True
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    chunk = Chunk.objects.get()
+    vector_after = None if chunk.embedding is None else list(chunk.embedding)
+    assert (chunk.text, chunk.embedding_model, vector_after) == (
+        "Answer to question 1.",
+        "recording",
+        vector_before,
+    )
+
+
+@pytest.mark.django_db
+def test_replace_deferring_embedding_stores_unchanged_text_of_other_model_unembedded(
+    settings: "Settings",
+) -> None:
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+    assert Chunk.objects.get().embedding_model != "recording"
+    calls = use_call_recording_embeddings(settings)
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = True
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    assert calls == []
+    assert list(Chunk.objects.values_list("text", "embedding", "embedding_model")) == [
+        ("Answer to question 1.", None, "")
+    ]
+
+
+@pytest.mark.django_db
+def test_replace_with_defer_embedding_false_embeds_the_new_texts_as_when_unset(
+    settings: "Settings",
+) -> None:
+    use_fake_embeddings(settings, dimensions=3)
+    backend = FakeEmbeddings(dimensions=3)
+    [expected_vector] = backend.embed(["Answer to question 1."])
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = False
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    chunk = Chunk.objects.get()
+    assert chunk.embedding_model == "fake-3"
+    assert list(chunk.embedding) == expected_vector
+
+
+@pytest.mark.django_db(transaction=True)
+def test_replace_in_a_transaction_embeds_its_chunks_only_once_that_transaction_commits(
+    settings: "Settings",
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
+    calls = use_call_recording_embeddings(settings)
+
+    with transaction.atomic():
+        Indexer().replace({"faq:1": [faq_entry(1)]})
+        calls_before_the_commit = list(calls)
+        chunks_before_the_commit = list(
+            Chunk.objects.values_list("text", "embedding", "embedding_model")
+        )
+
+    assert calls_before_the_commit == []
+    assert chunks_before_the_commit == [("Answer to question 1.", None, "")]
+    assert calls == [["Answer to question 1."]]
+    # RecordingEmbeddings gives each text its position in the call.
+    chunk = Chunk.objects.get()
+    assert (chunk.text, chunk.embedding_model, list(chunk.embedding)) == (
+        "Answer to question 1.",
+        "recording",
+        [0.0, 1.0],
+    )
+
+
+@pytest.mark.django_db
+def test_replace_embeds_only_its_own_chunks_leaving_another_sources_pending_chunk(
+    settings: "Settings",
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+    embedded = use_recording_embeddings(settings)
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    assert embedded == ["Answer to question 1."]
+    assert {
+        chunk.document.source.source_key: (
+            chunk.text,
+            chunk.embedding_model,
+            None if chunk.embedding is None else list(chunk.embedding),
+        )
+        for chunk in Chunk.objects.select_related("document__source")
+    } == {
+        "faq:1": ("Answer to question 1.", "recording", [0.0, 1.0]),
+        "faq:2": ("Answer to question 2.", "", None),
+    }
+
+
+@pytest.mark.parametrize(
+    "non_bool",
+    [
+        "yes",
+        # 1 == True: a check by equality with the bools would accept it.
+        1,
+    ],
+)
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_when_defer_embedding_is_not_a_bool(
+    settings: "Settings", non_bool: object
+) -> None:
+    # Truthy, but not a bool: refused rather than read as true.
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = non_bool
+
+    with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_DEFER_EMBEDDING"):
+        replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
 
 
 @pytest.mark.django_db
@@ -550,7 +750,7 @@ def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
     entry_1 = dataclasses.replace(faq_entry(1), text=shared_text)
     entry_2 = dataclasses.replace(faq_entry(2), text=shared_text)
 
-    Indexer().replace({"faq:1": [entry_1], "faq:2": [entry_2]})
+    replace_and_run_on_commit({"faq:1": [entry_1], "faq:2": [entry_2]})
 
     assert embedded == [shared_text]
     assert {
@@ -560,27 +760,33 @@ def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
 
 
 @pytest.mark.django_db
-def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
+def test_replace_raises_the_backend_error_after_storing_its_texts_without_a_vector(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
-    source = Source.objects.get(source_key="faq:1")
-    content_before = stored_content(source)
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.FailingEmbeddings",
-        "OPTIONS": {"failing_text": "New answer to question 2."},
-    }
-    new_entry_1 = dataclasses.replace(faq_entry(1), text="New answer to question 1.")
-    new_entry_2 = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
+    use_failing_embeddings(settings, "Answer to question 1.")
 
     with pytest.raises(EmbeddingFailedError):
-        Indexer().replace({"faq:1": [new_entry_1], "faq:2": [new_entry_2]})
+        replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
-    assert stored_content(source) == content_before
+    assert list(Source.objects.values_list("source_key", flat=True)) == ["faq:1"]
+    assert list(Document.objects.values_list("source__source_key", "title")) == [
+        ("faq:1", "Question 1")
+    ]
+    # Not embedded, but still claimed: left to a run once its claim times out.
+    assert list(
+        Chunk.objects.values_list(
+            "document__title",
+            "text",
+            "embedding",
+            "embedding_model",
+        )
+    ) == [("Question 1", "Answer to question 1.", None, "")]
+    assert Chunk.objects.get().embedding_claimed_at is not None
 
 
 @pytest.mark.django_db
-def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vectors(
+def test_replace_raises_when_the_backend_returns_too_few_vectors(
     settings: "Settings",
 ) -> None:
     use_miscounting_embeddings(settings, vector_count=1)
@@ -595,11 +801,7 @@ def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vect
 
     # Both counts, in any order and wording: 2 texts, 1 vector.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
-        Indexer().replace({"guide:1": [two_chunk_document]})
-
-    assert not Source.objects.exists()
-    assert not Document.objects.exists()
-    assert not Chunk.objects.exists()
+        replace_and_run_on_commit({"guide:1": [two_chunk_document]})
 
 
 @pytest.mark.django_db
@@ -610,7 +812,7 @@ def test_replace_raises_when_the_backend_returns_too_many_vectors(
 
     # Both counts, in any order and wording: 1 text, 3 vectors.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\b1\b)(?=.*\b3\b)"):
-        Indexer().replace({"faq:1": [faq_entry(1)]})
+        replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
 
 @pytest.mark.django_db
@@ -619,7 +821,7 @@ def test_replace_raises_and_stores_nothing_for_a_document_of_another_source_key(
 ):
     # Both keys, in any order and wording: the group's and the document's.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:1\b)(?=.*\bfaq:2\b)"):
-        Indexer().replace({"faq:1": [faq_entry(2)]})
+        replace_and_run_on_commit({"faq:1": [faq_entry(2)]})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -633,7 +835,7 @@ def test_replace_raises_and_stores_nothing_for_the_last_document_of_a_later_grou
     # Both keys, in any order and wording: the second group's and its last
     # document's.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:5\b)(?=.*\bfaq:7\b)"):
-        Indexer().replace(
+        replace_and_run_on_commit(
             {
                 "faq:3": [faq_entry(3)],
                 "faq:5": [faq_entry(5), faq_entry_under("faq:5", 6), faq_entry(7)],
@@ -658,16 +860,35 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
     assert locked_inside_the_transaction == ["faq:1"]
 
 
+@pytest.mark.django_db(transaction=True)
+def test_replace_holds_no_source_row_lock_while_the_backend_embeds_by_default(
+    settings: "Settings", other_connection: "BaseDatabaseWrapper"
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default. A backend call
+    # can take long: a source row locked around it would block, for that long,
+    # every other replacement or removal of that source.
+    locked_during_each_call: list[list[str]] = []
+
+    def record_the_locked_sources() -> None:
+        locked_during_each_call.append(source_keys_locked_against(other_connection))
+
+    use_interleaving_embeddings(settings, record_the_locked_sources)
+
+    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+
+    assert locked_during_each_call == [[]]
+
+
 @pytest.mark.django_db
 def test_replace_locks_the_replaced_sources_in_sorted_source_key_order() -> None:
     # Two calls replacing overlapping sources must lock their rows in the same
     # order, whatever the order of their groups, or they can deadlock.
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
     )
 
     with CaptureQueriesContext(connection) as captured:
-        Indexer().replace(
+        replace_and_run_on_commit(
             {"faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)], "faq:1": [faq_entry(1)]}
         )
 
@@ -684,10 +905,10 @@ def test_replace_with_an_empty_group_locks_its_source_before_deleting_anything()
 ):
     # A replacement locks the source row, then deletes its documents; a removal
     # must take the same lock first, or the two can deadlock.
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     with CaptureQueriesContext(connection) as captured:
-        Indexer().replace({"faq:1": []})
+        replace_and_run_on_commit({"faq:1": []})
 
     queries = captured.captured_queries
     first_delete = next(
@@ -704,12 +925,12 @@ def test_replace_locks_removed_and_replaced_sources_in_sorted_source_key_order()
 ):
     # Two calls sharing sources must lock their rows in the same order, whether
     # each source is replaced or removed, or they can deadlock.
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
     )
 
     with CaptureQueriesContext(connection) as captured:
-        Indexer().replace({"faq:3": [faq_entry(3)], "faq:1": [], "faq:2": []})
+        replace_and_run_on_commit({"faq:3": [faq_entry(3)], "faq:1": [], "faq:2": []})
 
     assert source_keys_locked_by(captured.captured_queries) == [
         "faq:1",
@@ -729,7 +950,7 @@ def test_prune_with_no_source_stored_does_nothing() -> None:
 
 @pytest.mark.django_db
 def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     Indexer().prune("faq", set())
 
@@ -742,7 +963,7 @@ def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> No
 def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others() -> (
     None
 ):
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "faq:1": [faq_entry(1)],
             "faq:2": [faq_entry(2)],
@@ -772,7 +993,7 @@ def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others(
 
 @pytest.mark.django_db
 def test_prune_leaves_the_sources_of_another_model_label_with_their_content() -> None:
-    Indexer().replace({"news:1": [faq_entry_under("news:1", 1)]})
+    replace_and_run_on_commit({"news:1": [faq_entry_under("news:1", 1)]})
     other_source = Source.objects.get()
     content_before = stored_content(other_source)
 
@@ -790,7 +1011,9 @@ def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one(
 ):
     # The model label is matched up to the colon: "app.note" is not a model
     # label of "app.notebook:3".
-    Indexer().replace({"app.notebook:3": [faq_entry_under("app.notebook:3", 3)]})
+    replace_and_run_on_commit(
+        {"app.notebook:3": [faq_entry_under("app.notebook:3", 3)]}
+    )
     other_source = Source.objects.get()
     content_before = stored_content(other_source)
 
@@ -806,7 +1029,7 @@ def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one(
 def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None:
     # In a SQL LIKE pattern, "_" matches any character: "my_app.page" would
     # then be a model label of "myXapp.page:1".
-    Indexer().replace({"myXapp.page:1": [faq_entry_under("myXapp.page:1", 1)]})
+    replace_and_run_on_commit({"myXapp.page:1": [faq_entry_under("myXapp.page:1", 1)]})
     other_source = Source.objects.get()
     content_before = stored_content(other_source)
 
@@ -821,7 +1044,7 @@ def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None
 @pytest.mark.django_db
 def test_prune_raises_and_removes_nothing_for_an_empty_model_label() -> None:
     # ":1" is the key an empty model label would match up to the colon.
-    Indexer().replace({":1": [faq_entry_under(":1", 1)]})
+    replace_and_run_on_commit({":1": [faq_entry_under(":1", 1)]})
     stored_source = Source.objects.get()
     content_before = stored_content(stored_source)
 
@@ -840,7 +1063,7 @@ def test_prune_raises_and_removes_nothing_for_a_model_label_holding_the_separato
     None
 ):
     # "faq::1" is a key the model label "faq:" would match up to the colon.
-    Indexer().replace({"faq::1": [faq_entry_under("faq::1", 1)]})
+    replace_and_run_on_commit({"faq::1": [faq_entry_under("faq::1", 1)]})
     stored_source = Source.objects.get()
     content_before = stored_content(stored_source)
 
@@ -960,4 +1183,598 @@ def test_prune_leaves_a_source_committed_after_it_locked_its_sources(
 
     assert list(Source.objects.values_list("pk", "source_key")) == [
         (committed_after_the_locks[0], "faq:5")
+    ]
+
+
+@pytest.mark.django_db
+def test_embed_pending_with_every_chunk_embedded_returns_0_without_a_backend(
+    settings: "Settings",
+) -> None:
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+    del settings.MINIMAL_RAG_EMBEDDINGS
+
+    assert embed_pending() == 0
+
+
+@pytest.mark.django_db
+def test_embed_pending_gives_a_chunk_without_a_vector_the_backend_vector_and_model(
+    settings: "Settings",
+) -> None:
+    use_fake_embeddings(settings, dimensions=3)
+    [expected_vector] = FakeEmbeddings(dimensions=3).embed(["Answer to question 1."])
+    source = Source.objects.create(source_key="faq:1")
+    document = Document.objects.create(
+        source=source,
+        title="Question 1",
+        url="https://example.com/faq/1/",
+        language="en",
+    )
+    # A chunk stored before its embedding: no vector, no model.
+    Chunk.objects.create(
+        document=document,
+        rank=0,
+        text="Answer to question 1.",
+        embedding=None,
+        embedding_model="",
+    )
+
+    embedded_count = embed_pending()
+
+    chunk = Chunk.objects.get()
+    assert embedded_count == 1
+    assert chunk.embedding_model == "fake-3"
+    assert list(chunk.embedding) == expected_vector
+
+
+@pytest.mark.django_db
+def test_embed_pending_embeds_the_pending_chunks_of_several_sources_in_one_call(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 3
+    assert len(calls) == 1
+    [embedded_texts] = calls
+    assert sorted(embedded_texts) == [
+        "Answer to question 1.",
+        "Answer to question 2.",
+        "More on question 1.",
+    ]
+    # RecordingEmbeddings gives each text its position in the call.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded_texts)
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_leaves_a_chunk_embedded_by_another_model_as_it_is(
+    settings: "Settings",
+) -> None:
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+    embedded_chunk = Chunk.objects.get()
+    calls = use_call_recording_embeddings(settings)
+    assert embedded_chunk.embedding_model != "recording"
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 1
+    assert calls == [["Answer to question 2."]]
+    kept_chunk = Chunk.objects.get(pk=embedded_chunk.pk)
+    assert kept_chunk.embedding_model == embedded_chunk.embedding_model
+    assert list(kept_chunk.embedding) == list(embedded_chunk.embedding)
+    pending_chunk = Chunk.objects.get(text="Answer to question 2.")
+    assert pending_chunk.embedding_model == "recording"
+    assert list(pending_chunk.embedding) == [0.0, 1.0]
+
+
+@pytest.mark.django_db
+def test_embed_pending_embeds_a_shared_text_once_and_gives_each_chunk_its_vector(
+    settings: "Settings",
+) -> None:
+    embedded = use_recording_embeddings(settings)
+    shared_text = "Shared answer."
+    store_pending_chunks("faq:1", [shared_text])
+    store_pending_chunks("faq:2", [shared_text])
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 2
+    assert embedded == [shared_text]
+    assert {
+        chunk.document.source.source_key: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.select_related("document__source")
+    } == {"faq:1": ("recording", [0.0, 1.0]), "faq:2": ("recording", [0.0, 1.0])}
+
+
+@pytest.mark.django_db
+def test_embed_pending_with_a_batch_size_embeds_the_chunks_in_calls_of_that_size(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    texts = [f"Answer to question {number}." for number in range(1, 6)]
+    store_pending_chunks("faq:1", texts)
+
+    embedded_count = embed_pending(batch_size=2)
+
+    assert embedded_count == 5
+    assert len(calls) == 3
+    assert all(len(call) <= 2 for call in calls)
+    embedded_texts = [text for call in calls for text in call]
+    assert sorted(embedded_texts) == sorted(texts)
+    # RecordingEmbeddings gives each text its position among all texts embedded.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded_texts)
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_without_a_batch_size_embeds_in_calls_of_at_most_100_chunks(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    texts = [f"Answer to question {number}." for number in range(1, 102)]
+    store_pending_chunks("faq:1", texts)
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 101
+    assert [len(call) for call in calls] == [100, 1]
+    assert sorted(text for call in calls for text in call) == sorted(texts)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_embed_pending_calls_the_backend_with_no_transaction_open(
+    settings: "Settings",
+) -> None:
+    # A backend call can take long: a transaction open around it would hold
+    # its locks, and a connection, for that long.
+    transaction_open = use_transaction_probing_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    embedded_count = embed_pending(batch_size=1)
+
+    assert embedded_count == 2
+    assert transaction_open == [False, False]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_embed_pending_with_a_batch_size_below_1_raises_and_embeds_nothing(
+    settings: "Settings", batch_size: int
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    with pytest.raises(ValueError, match="batch_size"):
+        embed_pending(batch_size=batch_size)
+
+    assert calls == []
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
+    ]
+
+
+@pytest.mark.django_db
+def test_embed_pending_raises_and_stores_no_vector_when_the_backend_miscounts(
+    settings: "Settings",
+) -> None:
+    use_miscounting_embeddings(settings, vector_count=1)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    # Both counts, in any order and wording: 2 texts, 1 vector.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
+        embed_pending()
+
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
+    ]
+
+
+@pytest.mark.django_db
+def test_embed_pending_raises_the_backend_error_and_a_next_run_skips_the_failed_batch(
+    settings: "Settings",
+) -> None:
+    failing_calls: list[list[str]] = []
+    use_failing_embeddings(settings, "Answer to question 1.", failing_calls)
+    texts = [f"Answer to question {number}." for number in range(1, 5)]
+    # Stored first, the failing text's chunk is taken in the first batch.
+    store_pending_chunks("faq:1", texts)
+
+    with pytest.raises(EmbeddingFailedError):
+        embed_pending(batch_size=2)
+
+    [failed_call] = failing_calls
+    assert "Answer to question 1." in failed_call
+    other_texts = [text for text in texts if text not in failed_call]
+    calls = use_call_recording_embeddings(settings)
+
+    # Started right after, well within the claim timeout of the failed batch.
+    embedded_count = embed_pending(
+        batch_size=2, claim_timeout=datetime.timedelta(minutes=10)
+    )
+
+    # The failed batch stays claimed: this run embeds only the other chunks.
+    assert embedded_count == len(other_texts)
+    embedded_texts = [text for call in calls for text in call]
+    assert sorted(embedded_texts) == sorted(other_texts)
+    assert sorted(
+        Chunk.objects.filter(embedding__isnull=True, embedding_model="").values_list(
+            "text", flat=True
+        )
+    ) == sorted(failed_call)
+    # RecordingEmbeddings gives each text its position among all texts embedded.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.filter(embedding__isnull=False)
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded_texts)
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_keeps_the_vectors_of_earlier_batches_when_a_later_one_fails(
+    settings: "Settings",
+) -> None:
+    calls: list[list[str]] = []
+    use_failing_embeddings(settings, "Answer to question 4.", calls)
+    texts = [f"Answer to question {number}." for number in range(1, 5)]
+    # Stored last, the failing text's chunk is taken in a later batch.
+    store_pending_chunks("faq:1", texts)
+
+    with pytest.raises(EmbeddingFailedError):
+        embed_pending(batch_size=2)
+
+    *earlier_calls, failed_call = calls
+    assert "Answer to question 4." in failed_call
+    embedded_texts = [text for call in earlier_calls for text in call]
+    assert embedded_texts
+    # The failed batch's chunks still await a vector, the others have theirs.
+    assert sorted(
+        Chunk.objects.filter(embedding__isnull=True, embedding_model="").values_list(
+            "text", flat=True
+        )
+    ) == sorted(failed_call)
+    # FailingEmbeddings gives each text its length.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.filter(embedding__isnull=False)
+    } == {text: ("failing", [float(len(text)), 1.0]) for text in embedded_texts}
+
+
+@pytest.mark.django_db
+def test_embed_pending_gives_no_vector_to_a_chunk_deleted_during_its_backend_call(
+    settings: "Settings",
+) -> None:
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+    use_interleaving_embeddings(settings, remove_faq_2)
+
+    embed_pending()
+
+    # The deleted chunk stays deleted; InterleavingEmbeddings gives each text
+    # its length, and the rest of the batch gets its vectors.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        "Answer to question 1.": ("interleaving", [21.0, 1.0]),
+        "More on question 1.": ("interleaving", [19.0, 1.0]),
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_does_not_count_a_chunk_deleted_during_its_backend_call(
+    settings: "Settings",
+) -> None:
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+    use_interleaving_embeddings(settings, remove_faq_2)
+
+    embedded_count = embed_pending()
+
+    # Only the chunks still stored got a vector: the deleted one is not counted.
+    assert embedded_count == 2
+
+
+@pytest.mark.django_db
+def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_chunks(
+    settings: "Settings",
+) -> None:
+    claimed_texts = ["Answer to question 1.", "More on question 1."]
+    store_pending_chunks("faq:1", claimed_texts)
+    calls: list[list[str]] = []
+    second_run_counts: list[int] = []
+
+    def run_a_second_embed_pending() -> None:
+        # Stored once the first run has claimed its batch, so left to the second.
+        store_pending_chunks("faq:2", ["Answer to question 2."])
+        second_run_counts.append(embed_pending())
+
+    # Only during the first run's backend call: the second run's own backend
+    # call comes back here too.
+    use_interleaving_embeddings(
+        settings, only_during_the_first_call(calls, run_a_second_embed_pending), calls
+    )
+
+    first_run_count = embed_pending()
+
+    assert first_run_count == 2
+    assert second_run_counts == [1]
+    first_call, *second_run_calls = calls
+    assert sorted(first_call) == claimed_texts
+    assert second_run_calls == [["Answer to question 2."]]
+    # InterleavingEmbeddings gives each text its length.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        "Answer to question 1.": ("interleaving", [21.0, 1.0]),
+        "More on question 1.": ("interleaving", [19.0, 1.0]),
+        "Answer to question 2.": ("interleaving", [21.0, 1.0]),
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_run_during_replaces_backend_call_skips_the_chunks_it_stored(
+    settings: "Settings",
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default, so replace()
+    # embeds its chunks once it commits.
+    replaced_texts = ["Answer to question 1.", "Answer to question 3."]
+    calls: list[list[str]] = []
+    pending_run_counts: list[int] = []
+
+    def run_embed_pending() -> None:
+        # Stored once replace() has claimed its chunks, so left to the run.
+        store_pending_chunks("faq:2", ["Answer to question 2."])
+        pending_run_counts.append(embed_pending())
+
+    # Only during replace()'s backend call: the run's own backend call comes
+    # back here too.
+    use_interleaving_embeddings(
+        settings, only_during_the_first_call(calls, run_embed_pending), calls
+    )
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 3)]})
+
+    assert pending_run_counts == [1]
+    replace_call, *pending_run_calls = calls
+    assert sorted(replace_call) == replaced_texts
+    assert pending_run_calls == [["Answer to question 2."]]
+    # InterleavingEmbeddings gives each text its length.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        "Answer to question 1.": ("interleaving", [21.0, 1.0]),
+        "Answer to question 3.": ("interleaving", [21.0, 1.0]),
+        "Answer to question 2.": ("interleaving", [21.0, 1.0]),
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
+    settings: "Settings",
+) -> None:
+    texts = [f"Answer to question {number}." for number in range(1, 5)]
+    store_pending_chunks("faq:1", texts)
+    calls: list[list[str]] = []
+    claimed_during_first_call: dict[str, bool] = {}
+
+    def record_which_chunks_are_claimed() -> None:
+        claimed_during_first_call.update(
+            (text, claimed_at is not None)
+            for text, claimed_at in Chunk.objects.values_list(
+                "text", "embedding_claimed_at"
+            )
+        )
+
+    use_interleaving_embeddings(
+        settings,
+        only_during_the_first_call(calls, record_which_chunks_are_claimed),
+        calls,
+    )
+
+    embed_pending(batch_size=2)
+
+    first_call = calls[0]
+    assert len(first_call) == 2
+    # Only the batch being embedded is claimed: another run may take the rest.
+    assert claimed_during_first_call == {text: text in first_call for text in texts}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_embed_pending_skips_pending_chunks_whose_rows_another_transaction_locks(
+    settings: "Settings", other_connection: "BaseDatabaseWrapper"
+) -> None:
+    # Another process may hold a pending chunk's row locked for long, such as
+    # a replacement deleting it in its transaction: waiting for that lock would
+    # hold up the embedding of every other pending chunk for as long.
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Locked answer."])
+    store_pending_chunks("faq:2", ["Answer to question 2.", "More on question 2."])
+    locked_pk = Chunk.objects.get(text="Locked answer.").pk
+    table = other_connection.ops.quote_name(Chunk._meta.db_table)
+    # Out of autocommit mode, the lock lasts until the rollback below; the
+    # fixture closing the connection also releases it, should this fail.
+    other_connection.set_autocommit(False)
+    with other_connection.cursor() as cursor:
+        cursor.execute(f"SELECT FROM {table} WHERE id = %s FOR UPDATE", [locked_pk])
+    with connection.cursor() as cursor:
+        # Bounds the wait of a run blocked on the lock: it fails, never hangs.
+        cursor.execute("SET lock_timeout = '1s'")
+    try:
+        embedded_count = embed_pending()
+    except OperationalError as error:
+        pytest.fail(f"embed_pending() waited for the locked chunk: {error}")
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("RESET lock_timeout")
+        other_connection.rollback()
+
+    assert embedded_count == 2
+    assert [sorted(call) for call in calls] == [
+        ["Answer to question 2.", "More on question 2."]
+    ]
+    locked_chunk = Chunk.objects.get(pk=locked_pk)
+    assert locked_chunk.embedding is None
+    assert locked_chunk.embedding_model == ""
+    assert sorted(
+        Chunk.objects.filter(embedding_model="recording").values_list("text", flat=True)
+    ) == ["Answer to question 2.", "More on question 2."]
+
+
+@pytest.mark.django_db
+def test_embed_pending_skips_a_chunk_claimed_within_the_claim_timeout(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Claimed answer.", "Unclaimed answer."])
+    # Another run claimed this chunk two minutes ago and may still embed it.
+    claimed_at = timezone.now() - datetime.timedelta(minutes=2)
+    Chunk.objects.filter(text="Claimed answer.").update(embedding_claimed_at=claimed_at)
+
+    embedded_count = embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+
+    assert embedded_count == 1
+    assert calls == [["Unclaimed answer."]]
+    claimed_chunk = Chunk.objects.get(text="Claimed answer.")
+    assert claimed_chunk.embedding is None
+    assert claimed_chunk.embedding_model == ""
+    unclaimed_chunk = Chunk.objects.get(text="Unclaimed answer.")
+    assert unclaimed_chunk.embedding_model == "recording"
+    assert list(unclaimed_chunk.embedding) == [0.0, 1.0]
+
+
+@pytest.mark.django_db
+def test_embed_pending_embeds_a_chunk_whose_claim_is_older_than_the_claim_timeout(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Abandoned answer."])
+    # Another run claimed this chunk twenty minutes ago and never embedded it.
+    claimed_at = timezone.now() - datetime.timedelta(minutes=20)
+    Chunk.objects.update(embedding_claimed_at=claimed_at)
+
+    embedded_count = embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+
+    assert embedded_count == 1
+    assert calls == [["Abandoned answer."]]
+    chunk = Chunk.objects.get()
+    assert chunk.embedding_model == "recording"
+    assert list(chunk.embedding) == [0.0, 1.0]
+
+
+@pytest.mark.django_db
+def test_embed_pending_stores_no_vector_of_a_batch_another_run_took_back_meanwhile(
+    settings: "Settings",
+) -> None:
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    second_run_calls: list[list[str]] = []
+    second_run_counts: list[int] = []
+
+    def take_the_batch_back_with_another_model() -> None:
+        # As if the backend call had lasted twenty minutes: the first run's
+        # claim is now older than the claim timeout, so another run, with
+        # another backend, takes the batch back and embeds it.
+        Chunk.objects.update(
+            embedding_claimed_at=timezone.now() - datetime.timedelta(minutes=20)
+        )
+        recorded_calls = use_call_recording_embeddings(settings)
+        second_run_counts.append(
+            embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+        )
+        second_run_calls.extend(recorded_calls)
+
+    use_interleaving_embeddings(settings, take_the_batch_back_with_another_model)
+
+    first_run_count = embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+
+    assert second_run_counts == [2]
+    [second_run_call] = second_run_calls
+    # The first run's vectors would replace the second run's: it stores none,
+    # and counts none. RecordingEmbeddings gives each text its position.
+    assert first_run_count == 0
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(second_run_call)
+    }
+
+
+@pytest.mark.django_db
+def test_embed_pending_without_a_claim_timeout_takes_back_claims_older_than_10_minutes(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Abandoned answer.", "Recently claimed answer."])
+    now = timezone.now()
+    # Another run claimed this chunk eleven minutes ago and never embedded it.
+    Chunk.objects.filter(text="Abandoned answer.").update(
+        embedding_claimed_at=now - datetime.timedelta(minutes=11)
+    )
+    # Another run claimed this chunk nine minutes ago and may still embed it.
+    Chunk.objects.filter(text="Recently claimed answer.").update(
+        embedding_claimed_at=now - datetime.timedelta(minutes=9)
+    )
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 1
+    assert calls == [["Abandoned answer."]]
+    abandoned_chunk = Chunk.objects.get(text="Abandoned answer.")
+    assert abandoned_chunk.embedding_model == "recording"
+    assert list(abandoned_chunk.embedding) == [0.0, 1.0]
+    recently_claimed_chunk = Chunk.objects.get(text="Recently claimed answer.")
+    assert recently_claimed_chunk.embedding is None
+    assert recently_claimed_chunk.embedding_model == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "claim_timeout", [datetime.timedelta(0), datetime.timedelta(minutes=-1)]
+)
+def test_embed_pending_with_a_claim_timeout_of_zero_or_below_raises_and_embeds_nothing(
+    settings: "Settings", claim_timeout: datetime.timedelta
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    with pytest.raises(ValueError, match="claim_timeout"):
+        embed_pending(claim_timeout=claim_timeout)
+
+    assert calls == []
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
     ]

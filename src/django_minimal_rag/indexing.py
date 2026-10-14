@@ -1,12 +1,16 @@
 """Indexing of documents into the storage models."""
 
-from collections.abc import Mapping, Sequence
+import datetime
+from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.db.models.functions import Collate
+from django.utils import timezone
 
 from django_minimal_rag.chunking import split_text
 from django_minimal_rag.documents import Document as DocumentProtocol
@@ -15,6 +19,12 @@ from django_minimal_rag.models import Chunk, Document, Source
 
 MODEL_LABEL_SEPARATOR = ":"
 """What ends the model label at the start of a source key."""
+DEFAULT_BATCH_SIZE = 100
+"""Most chunks per embedding call when no batch size is given."""
+DEFAULT_CLAIM_TIMEOUT = datetime.timedelta(minutes=10)
+"""How long a claim keeps other runs off a chunk when no claim timeout is given."""
+DEFER_EMBEDDING_SETTING = "MINIMAL_RAG_DEFER_EMBEDDING"
+"""When true, replace() does not embed the chunks it stored once it commits."""
 
 
 class Indexer:
@@ -49,7 +59,113 @@ class Indexer:
                 embeddings = get_embeddings()
             plans.append(_prepare_source(source_key, documents, embeddings))
         if embeddings is not None:
-            _store_all_chunks(plans, embeddings)
+            _store_all_chunks(plans, embeddings.model)
+
+
+def embed_pending(
+    batch_size: int | None = None, claim_timeout: datetime.timedelta | None = None
+) -> int:
+    """Embed the chunks still waiting for a vector; return how many were.
+
+    Embed them in calls of at most ``batch_size`` chunks
+    (``DEFAULT_BATCH_SIZE`` by default).
+    Skip the chunks claimed more recently than ``claim_timeout``
+    (``DEFAULT_CLAIM_TIMEOUT`` by default).
+    """
+    return _embed_pending(batch_size, claim_timeout, None)
+
+
+def _embed_pending(
+    batch_size: int | None,
+    claim_timeout: datetime.timedelta | None,
+    document_ids: AbstractSet[int] | None,
+) -> int:
+    """Run embed_pending(), only on the chunks of ``document_ids`` if given."""
+    _check_batch_size(batch_size)
+    _check_claim_timeout(claim_timeout)
+    if batch_size is None:
+        batch_size = DEFAULT_BATCH_SIZE
+    if claim_timeout is None:
+        claim_timeout = DEFAULT_CLAIM_TIMEOUT
+    embedded = 0
+    embeddings: Embeddings | None = None  # built only if a chunk is pending
+    while batch := _claim_pending_chunks(claim_timeout, batch_size, document_ids):
+        if embeddings is None:
+            embeddings = get_embeddings()
+        embedded += _embed_chunks(batch, embeddings)
+    return embedded
+
+
+def _claim_pending_chunks(
+    claim_timeout: datetime.timedelta, limit: int, document_ids: AbstractSet[int] | None
+) -> list[Chunk]:
+    """Claim at most ``limit`` chunks of ``_pending_chunks(...)``."""
+    claimed_at = timezone.now()
+    with transaction.atomic():
+        # Rows another transaction locks are skipped, never waited for.
+        ids = list(
+            _pending_chunks(claim_timeout, document_ids)
+            .select_for_update(skip_locked=True)
+            .order_by("pk")
+            .values_list("pk", flat=True)[:limit]
+        )
+        # One UPDATE takes the chunks, so that no other run takes them too.
+        _pending_chunks(claim_timeout, document_ids).filter(pk__in=ids).update(
+            embedding_claimed_at=claimed_at
+        )
+    return list(
+        Chunk.objects.filter(
+            pk__in=ids, embedding__isnull=True, embedding_claimed_at=claimed_at
+        ).order_by("pk")
+    )
+
+
+def _pending_chunks(
+    claim_timeout: datetime.timedelta, document_ids: AbstractSet[int] | None
+) -> QuerySet[Chunk]:
+    """Return the chunks waiting for a vector, without those claimed recently.
+
+    A chunk is claimed recently when it was claimed less than ``claim_timeout``
+    ago. Only the chunks of ``document_ids`` are returned if it is given.
+    """
+    chunks = Chunk.objects.filter(embedding__isnull=True).filter(
+        Q(embedding_claimed_at__isnull=True)
+        | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
+    )
+    if document_ids is not None:
+        chunks = chunks.filter(document_id__in=document_ids)
+    return chunks
+
+
+def _check_batch_size(batch_size: int | None) -> None:
+    """Raise ``ValueError`` if ``batch_size`` is given and below 1."""
+    if batch_size is not None and batch_size < 1:
+        message = f"batch_size must be at least 1, got {batch_size}"
+        raise ValueError(message)
+
+
+def _check_claim_timeout(claim_timeout: datetime.timedelta | None) -> None:
+    """Raise ``ValueError`` if ``claim_timeout`` is given and not positive."""
+    if claim_timeout is not None and claim_timeout <= datetime.timedelta(0):
+        message = f"claim_timeout must be positive, got {claim_timeout!r}"
+        raise ValueError(message)
+
+
+def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> int:
+    """Give ``chunks`` the vectors of ``embeddings``, in one call, and save them.
+
+    Only the chunks still stored and still under this run's claim are saved.
+    Return how many of them were saved.
+    """
+    vectors = _embed_distinct((chunk.text for chunk in chunks), embeddings)
+    for chunk in chunks:
+        chunk.embedding = vectors[chunk.text]
+        chunk.embedding_model = embeddings.model
+    # A chunk another run took back meanwhile has another claim: leave it be.
+    still_claimed = Chunk.objects.filter(
+        embedding_claimed_at=chunks[0].embedding_claimed_at
+    )
+    return still_claimed.bulk_update(chunks, ["embedding", "embedding_model"])
 
 
 class _Plan(NamedTuple):
@@ -188,46 +304,73 @@ def _split_documents(
     ]
 
 
-def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
-    """Store the chunks of all ``plans``, each source's pieces ranked in order."""
+def _store_all_chunks(plans: Sequence[_Plan], embedding_model: str) -> None:
+    """Store the chunks of all ``plans``, each source's pieces ranked in order.
+
+    A text without a stored vector is stored without one. Unless the
+    ``DEFER_EMBEDDING_SETTING`` setting is true, it is embedded once the
+    transaction commits, as are the other pending chunks of ``plans``' documents
+    — never those of another source.
+    """
+    _store_chunks_without_embedding(plans, embedding_model)
+    if not _is_embedding_deferred():
+        document_ids = {
+            stored_document.pk for plan in plans for stored_document, _ in plan.pieces
+        }
+        transaction.on_commit(
+            lambda: _embed_pending(
+                batch_size=None, claim_timeout=None, document_ids=document_ids
+            )
+        )
+
+
+def _is_embedding_deferred() -> bool:
+    """Return whether the ``DEFER_EMBEDDING_SETTING`` setting is true."""
+    defer_embedding: object = getattr(settings, DEFER_EMBEDDING_SETTING, False)
+    if not isinstance(defer_embedding, bool):
+        message = f"The {DEFER_EMBEDDING_SETTING} setting must be a bool."
+        raise ImproperlyConfigured(message)
+    return defer_embedding
+
+
+def _store_chunks_without_embedding(
+    plans: Sequence[_Plan], embedding_model: str
+) -> None:
+    """Store the pieces of ``plans`` as chunks, without embedding any text.
+
+    Each source's pieces are ranked in order. A text with a vector stored in one
+    of ``plans`` keeps it, as a vector of ``embedding_model``; any other text is
+    stored without a vector.
+    """
     ranked_pieces = (
         (rank, stored_document, text)
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
+    stored_vectors = {
+        text: vector for plan in plans for text, vector in plan.stored_vectors.items()
+    }
     Chunk.objects.bulk_create(
         Chunk(
             document=stored_document,
             rank=rank,
             text=text,
-            embedding_model=embeddings.model,
-            embedding=vector,
+            embedding_model=embedding_model,
+            embedding=stored_vectors[text],
         )
-        for (rank, stored_document, text), vector in zip(
-            ranked_pieces, _vectors(plans, embeddings), strict=True
-        )
+        if text in stored_vectors
+        else Chunk(document=stored_document, rank=rank, text=text)
+        for rank, stored_document, text in ranked_pieces
     )
 
 
-def _vectors(plans: Sequence[_Plan], embeddings: Embeddings) -> list[Any]:
-    """Return one vector per piece of ``plans``, embedding new texts in one call.
+def _embed_distinct(texts: Iterable[str], embeddings: Embeddings) -> dict[str, Any]:
+    """Return the vector ``embeddings`` gives each of ``texts``, by text.
 
-    A text already embedded by the same model keeps its vector.
+    A text repeated in ``texts`` is embedded once, in a single call for all.
     """
-    new_texts = list(
-        dict.fromkeys(
-            text
-            for plan in plans
-            for _, text in plan.pieces
-            if text not in plan.stored_vectors
-        )
-    )
-    new_vectors = dict(zip(new_texts, _embed(new_texts, embeddings), strict=True))
-    return [
-        plan.stored_vectors[text] if text in plan.stored_vectors else new_vectors[text]
-        for plan in plans
-        for _, text in plan.pieces
-    ]
+    distinct_texts = list(dict.fromkeys(texts))
+    return dict(zip(distinct_texts, _embed(distinct_texts, embeddings), strict=True))
 
 
 def _embed(texts: Sequence[str], embeddings: Embeddings) -> list[Any]:

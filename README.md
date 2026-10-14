@@ -71,7 +71,10 @@ The app's models hold what gets indexed:
   (unbounded text, the language tag stored as given, `None` when unknown)
   and `permissions` (a list of permission names, empty by default);
 - `Chunk` — a chunk of a document: its `rank`, `text`, the name of the
-  `embedding_model` that produced its `embedding`, and that embedding.
+  `embedding_model` that produced its `embedding`, and that embedding. A
+  chunk waiting for its vector has no `embedding` (`None`) and an empty
+  `embedding_model`; `embedding_claimed_at` records when an
+  `embed_pending()` run took it.
 
 The embedding column has no fixed dimension, so vectors of different
 models, and of different dimensions, are stored side by side; each chunk
@@ -117,13 +120,15 @@ a `typing.Protocol`:
   the vectors would change, dimension included: a backend whose API takes
   a dimension names it, e.g. `text-embedding-3-small@512`;
 - `embed(texts)` — takes a `Sequence[str]` and returns one vector, a
-  `list[float]`, per text, in the same order. `replace()` sends all its
-  new texts in one call, however many: a backend whose API limits the
-  size of a request splits them into batches itself.
+  `list[float]`, per text, in the same order. `embed_pending()` sends at
+  most `batch_size` texts per call (100 by default).
 
-Changing models does not mix vectors: a chunk embedded by another model
-than the current backend's is re-embedded by `replace()`, and retrieval
-only reads chunks of the current model.
+Changing models does not mix vectors: a chunk that `replace()` stores
+again, embedded by another model than the current backend's, is stored
+without a vector and embedded again by `embed_pending()`; retrieval only
+reads chunks of the current model. `embed_pending()` itself only fills
+missing vectors: chunks of another model that no `replace()` touches keep
+their vector until they are re-indexed.
 
 `django_minimal_rag.embeddings.FakeEmbeddings` is a backend for tests: no
 network, no model, deterministic across runs and processes. Its
@@ -153,31 +158,29 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
 ```
 
 - Each group replaces everything stored under its `source_key`: its
-  documents are chunked as `chunk_group` chunks them (default options),
-  embedded with the backend `MINIMAL_RAG_EMBEDDINGS` configures, and
-  stored; sources absent from the call are left as they are. A document
+  documents are chunked as `chunk_group` chunks them (default options)
+  and stored, their texts waiting for a vector (see *Embedding* below);
+  sources absent from the call are left as they are. A document
   given twice in a group is stored twice, each time with its own chunks.
 - An empty group removes its source, with its documents and chunks; for a
   key that is not stored, it does nothing.
-- A chunk whose text is already stored in its source, embedded by the
-  current backend's model, keeps its vector: only new or changed texts,
-  and texts embedded by another model, are sent to the backend.
-- The new texts of all groups are sent to the backend in a single
-  `embed()` call, each text once, however many groups or documents share
-  it. A call whose groups are all empty builds no backend, so it works
-  without `MINIMAL_RAG_EMBEDDINGS`.
-- A call is one transaction, embedding included: if the backend raises,
-  the exception propagates and nothing of the call is stored. The row of
-  each replaced or removed source is locked (`SELECT … FOR UPDATE`) before
+- A chunk whose text is already stored, embedded by the current
+  backend's model, in one of the call's sources keeps that vector — even
+  when the text was stored in another of them: only new or changed
+  texts, and texts embedded by another model, are stored without one. A call
+  with a non-empty group needs `MINIMAL_RAG_EMBEDDINGS`, to know the
+  current model; a call whose groups are all empty builds no backend, so
+  it works without it.
+- A call is one transaction, without the embedding. The row of each
+  replaced or removed source is locked (`SELECT … FOR UPDATE`) before
   anything of it changes, until the transaction ends, so two calls on the
   same source run one after the other instead of interleaving their
-  documents. The rows are locked in sorted `source_key` order, so two
-  calls sharing several sources do not deadlock, whatever the order of
-  their `groups`.
+  documents; no lock is held while the backend embeds. The rows are
+  locked in sorted `source_key` order, so two calls sharing several
+  sources do not deadlock, whatever the order of their `groups`.
 - `ValueError` is raised, and nothing of the call is stored, when a
   document's `source_key` differs from the key of its group (the message
-  names both keys), and when the backend returns another number of vectors
-  than it was given texts (the message gives both counts).
+  names both keys).
 - Each group is iterated once, so a sequence that yields its items only
   the first time is stored whole; documents need not be hashable.
 
@@ -202,6 +205,56 @@ Indexer().prune("faq", {"faq:1", "faq:3"})
   replacement sharing sources do not deadlock.
 
 `replace()` and `prune()` form django-model-rag's output Protocol.
+
+### Embedding
+
+`django_minimal_rag.indexing.embed_pending(batch_size=None,
+claim_timeout=None)` gives every chunk waiting for a vector the vector of
+the backend `MINIMAL_RAG_EMBEDDINGS` configures, and returns how many it
+embedded:
+
+```python
+embed_pending()
+```
+
+- By default, `replace()` runs `embed_pending()` on the chunks of the
+  documents it stored — never on those of another source — once its
+  transaction commits (`transaction.on_commit`): called inside the
+  project's own transaction, it embeds when that transaction commits. If
+  the backend raises, `replace()` raises its error, but its texts are
+  already stored: they stay without a vector until a later
+  `embed_pending()` — for the failed batch, one run after its claim times
+  out (see below). Django then skips the `on_commit` callbacks registered
+  after `replace()`'s in the same transaction: register yours before, or
+  use `MINIMAL_RAG_DEFER_EMBEDDING`.
+- With `MINIMAL_RAG_DEFER_EMBEDDING = True`, `replace()` never calls the
+  backend: the project runs `embed_pending()` itself — from a task queue,
+  a cron job or a management command. Any other value than a bool raises
+  `ImproperlyConfigured`.
+- Chunks without a vector are left out of retrieval until they get one.
+- A text shared by several pending chunks is sent once. At most
+  `batch_size` texts (100 by default) go in one `embed()` call; a
+  `batch_size` below 1 raises `ValueError`.
+- Each batch is claimed (`embedding_claimed_at`) in a short transaction
+  that skips the rows another transaction locks (`SELECT … FOR UPDATE
+  SKIP LOCKED`) instead of waiting for them, then embedded with no
+  transaction open and no row lock held, so concurrent runs share the
+  work instead of embedding the same chunks. A partial index on the
+  chunks without a vector keeps the claim from scanning the whole table.
+  A claim older than `claim_timeout` (10 minutes by default) is taken
+  back, so the chunks of a run that crashed are embedded by a later one;
+  a run whose claim was taken back stores none of that batch's vectors and
+  does not count them. A `claim_timeout` of zero or below raises
+  `ValueError`.
+- If the backend raises, `embed_pending()` raises its error; the batches
+  already embedded keep their vectors, and the failed batch stays claimed,
+  so runs started before its claim times out skip it and embed the other
+  pending chunks. When the backend returns another number of vectors than it
+  was given texts, `ValueError` is raised (the message gives both counts)
+  and the batch stays without vectors.
+- A chunk deleted while its batch is embedded — its source replaced or
+  removed in the meantime — gets no vector, is not counted, and causes no
+  error.
 
 ## Retrieval
 
