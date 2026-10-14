@@ -18,6 +18,8 @@ from django_minimal_rag.models import Chunk, Document, Source
 
 MODEL_LABEL_SEPARATOR = ":"
 """What ends the model label at the start of a source key."""
+DEFER_EMBEDDING_SETTING = "MINIMAL_RAG_DEFER_EMBEDDING"
+"""When true, replace() stores chunks without a vector, for embed_pending()."""
 
 
 class Indexer:
@@ -263,13 +265,16 @@ def _split_documents(
 
 
 def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
-    """Store the chunks of all ``plans``, each source's pieces ranked in order."""
+    """Store the chunks of all ``plans``, each source's pieces ranked in order.
+
+    With the ``DEFER_EMBEDDING_SETTING`` setting true, store them without a vector.
+    """
     ranked_pieces = (
         (rank, stored_document, text)
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
-    if getattr(settings, "MINIMAL_RAG_DEFER_EMBEDDING", False):
+    if getattr(settings, DEFER_EMBEDDING_SETTING, False):
         Chunk.objects.bulk_create(
             Chunk(document=stored_document, rank=rank, text=text)
             for rank, stored_document, text in ranked_pieces
