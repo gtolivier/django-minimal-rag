@@ -57,6 +57,8 @@ def embed_pending(batch_size: int | None = None) -> int:
 
     With ``batch_size``, embed them in calls of at most that many chunks.
     """
+    if batch_size is not None and batch_size < 1:
+        raise ValueError(f"batch_size must be at least 1, got {batch_size}")
     pending = list(Chunk.objects.filter(embedding__isnull=True))
     if not pending:
         return 0
