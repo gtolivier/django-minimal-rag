@@ -684,27 +684,36 @@ def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
 
 
 @pytest.mark.django_db
-def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
+def test_replace_raises_the_backend_error_after_storing_its_texts_without_a_vector(
     settings: "Settings",
 ) -> None:
-    replace_and_run_on_commit({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
-    source = Source.objects.get(source_key="faq:1")
-    content_before = stored_content(source)
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default.
     settings.MINIMAL_RAG_EMBEDDINGS = {
         "BACKEND": "tests.embeddings.FailingEmbeddings",
-        "OPTIONS": {"failing_text": "New answer to question 2."},
+        "OPTIONS": {"failing_text": "Answer to question 1."},
     }
-    new_entry_1 = dataclasses.replace(faq_entry(1), text="New answer to question 1.")
-    new_entry_2 = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
 
     with pytest.raises(EmbeddingFailedError):
-        replace_and_run_on_commit({"faq:1": [new_entry_1], "faq:2": [new_entry_2]})
+        replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
-    assert stored_content(source) == content_before
+    assert list(Source.objects.values_list("source_key", flat=True)) == ["faq:1"]
+    assert list(Document.objects.values_list("source__source_key", "title")) == [
+        ("faq:1", "Question 1")
+    ]
+    # Neither embedded nor claimed: left for a later embed_pending().
+    assert list(
+        Chunk.objects.values_list(
+            "document__title",
+            "text",
+            "embedding",
+            "embedding_model",
+            "embedding_claimed_at",
+        )
+    ) == [("Question 1", "Answer to question 1.", None, "", None)]
 
 
 @pytest.mark.django_db
-def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vectors(
+def test_replace_raises_when_the_backend_returns_too_few_vectors(
     settings: "Settings",
 ) -> None:
     use_miscounting_embeddings(settings, vector_count=1)
@@ -720,10 +729,6 @@ def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vect
     # Both counts, in any order and wording: 2 texts, 1 vector.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
         replace_and_run_on_commit({"guide:1": [two_chunk_document]})
-
-    assert not Source.objects.exists()
-    assert not Document.objects.exists()
-    assert not Chunk.objects.exists()
 
 
 @pytest.mark.django_db
