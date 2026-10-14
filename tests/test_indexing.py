@@ -1497,6 +1497,38 @@ def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_ch
 
 
 @pytest.mark.django_db
+def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
+    settings: "Settings",
+) -> None:
+    texts = [f"Answer to question {number}." for number in range(1, 5)]
+    store_pending_chunks("faq:1", texts)
+    calls: list[list[str]] = []
+    claimed_during_first_call: dict[str, bool] = {}
+
+    def record_which_chunks_are_claimed() -> None:
+        if len(calls) > 1:
+            return
+        claimed_during_first_call.update(
+            (text, claimed_at is not None)
+            for text, claimed_at in Chunk.objects.values_list(
+                "text", "embedding_claimed_at"
+            )
+        )
+
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": record_which_chunks_are_claimed, "calls": calls},
+    }
+
+    embed_pending(batch_size=2)
+
+    first_call = calls[0]
+    assert len(first_call) == 2
+    # Only the batch being embedded is claimed: another run may take the rest.
+    assert claimed_during_first_call == {text: text in first_call for text in texts}
+
+
+@pytest.mark.django_db
 def test_embed_pending_skips_a_chunk_claimed_within_the_claim_timeout(
     settings: "Settings",
 ) -> None:
