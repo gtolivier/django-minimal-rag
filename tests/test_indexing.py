@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.db import (
     DEFAULT_DB_ALIAS,
     connection,
@@ -623,6 +624,29 @@ def test_replace_deferring_embedding_stores_unchanged_text_of_other_model_unembe
     assert list(Chunk.objects.values_list("text", "embedding", "embedding_model")) == [
         ("Answer to question 1.", None, "")
     ]
+
+
+@pytest.mark.parametrize(
+    "non_bool",
+    [
+        "yes",
+        # 1 == True: a check by equality with the bools would accept it.
+        1,
+    ],
+)
+@pytest.mark.django_db
+def test_replace_raises_and_stores_nothing_when_defer_embedding_is_not_a_bool(
+    settings: "Settings", non_bool: object
+) -> None:
+    # Truthy, but not a bool: refused rather than read as true.
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = non_bool
+
+    with pytest.raises(ImproperlyConfigured, match="MINIMAL_RAG_DEFER_EMBEDDING"):
+        replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    assert not Source.objects.exists()
+    assert not Document.objects.exists()
+    assert not Chunk.objects.exists()
 
 
 @pytest.mark.django_db
