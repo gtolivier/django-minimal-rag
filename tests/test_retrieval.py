@@ -311,6 +311,30 @@ def test_retrieve_ignores_chunks_embedded_by_another_model_even_of_another_dimen
 
 
 @pytest.mark.django_db
+def test_retrieve_ignores_a_chunk_without_a_vector_and_returns_the_embedded_ones(
+    settings: "Settings",
+) -> None:
+    embedded_text = "The shop opens at nine."
+    pending_text = "The shop opens at eight on Saturdays."
+    question = "When does the shop open?"
+    use_chosen_embeddings(settings, {embedded_text: [1.0, 0.0], question: [1.0, 0.0]})
+    index_public_pages(embedded_text)
+    # A chunk stored before its embedding: no vector, no model.
+    embedded_chunk = Chunk.objects.get(text=embedded_text)
+    Chunk.objects.create(
+        document=embedded_chunk.document,
+        rank=embedded_chunk.rank + 1,
+        text=pending_text,
+        embedding=None,
+        embedding_model="",
+    )
+
+    retrieved = retrieve(question, permissions=frozenset(), max_distance=2.0)
+
+    assert [chunk.text for chunk in retrieved] == [embedded_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_leaves_out_a_chunk_requiring_a_permission_the_reader_lacks(
     settings: "Settings",
 ) -> None:
