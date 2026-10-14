@@ -18,10 +18,11 @@ from django_minimal_rag.embeddings import Embeddings, get_embeddings
 from django_minimal_rag.models import Chunk, Document, Source
 
 MODEL_LABEL_SEPARATOR = ":"
-DEFAULT_CLAIM_TIMEOUT = datetime.timedelta(minutes=10)
 """What ends the model label at the start of a source key."""
 DEFAULT_BATCH_SIZE = 100
 """Most chunks per embedding call when no batch size is given."""
+DEFAULT_CLAIM_TIMEOUT = datetime.timedelta(minutes=10)
+"""How long a claim keeps other runs off a chunk when no claim timeout is given."""
 DEFER_EMBEDDING_SETTING = "MINIMAL_RAG_DEFER_EMBEDDING"
 """When true, replace() does not run embed_pending() once it commits."""
 
