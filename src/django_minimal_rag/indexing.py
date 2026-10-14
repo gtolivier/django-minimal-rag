@@ -73,12 +73,13 @@ def embed_pending(
     (``DEFAULT_CLAIM_TIMEOUT`` by default).
     """
     _check_batch_size(batch_size)
-    chunks_per_call = batch_size or DEFAULT_BATCH_SIZE
+    if batch_size is None:
+        batch_size = DEFAULT_BATCH_SIZE
     if claim_timeout is None:
         claim_timeout = DEFAULT_CLAIM_TIMEOUT
     embedded = 0
     embeddings: Embeddings | None = None  # built only if a chunk is pending
-    while batch := _claim_pending_chunks(claim_timeout, chunks_per_call):
+    while batch := _claim_pending_chunks(claim_timeout, batch_size):
         try:
             if embeddings is None:
                 embeddings = get_embeddings()
@@ -289,12 +290,7 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
     ``DEFER_EMBEDDING_SETTING`` setting is true, embed_pending() embeds it once
     the transaction commits.
     """
-    ranked_pieces = (
-        (rank, stored_document, text)
-        for plan in plans
-        for rank, (stored_document, text) in enumerate(plan.pieces)
-    )
-    _store_chunks_without_embedding(ranked_pieces, plans, embeddings)
+    _store_chunks_without_embedding(plans, embeddings)
     if not _is_embedding_deferred():
         transaction.on_commit(embed_pending)
 
@@ -309,15 +305,18 @@ def _is_embedding_deferred() -> bool:
 
 
 def _store_chunks_without_embedding(
-    ranked_pieces: Iterable[tuple[int, Document, str]],
-    plans: Sequence[_Plan],
-    embeddings: Embeddings,
+    plans: Sequence[_Plan], embeddings: Embeddings
 ) -> None:
-    """Store ``ranked_pieces`` as chunks, without embedding any text.
+    """Store the pieces of ``plans`` as chunks, without embedding any text.
 
-    A text with a vector stored in one of ``plans`` keeps it; any other text is
-    stored without a vector.
+    Each source's pieces are ranked in order. A text with a vector stored in one
+    of ``plans`` keeps it; any other text is stored without a vector.
     """
+    ranked_pieces = (
+        (rank, stored_document, text)
+        for plan in plans
+        for rank, (stored_document, text) in enumerate(plan.pieces)
+    )
     stored_vectors = {
         text: vector for plan in plans for text, vector in plan.stored_vectors.items()
     }
