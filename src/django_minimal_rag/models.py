@@ -69,6 +69,13 @@ class Chunk(models.Model):
                 name="chunk_embedding_required_once_model_set",
             )
         ]
+        indexes = [
+            models.Index(
+                fields=["id"],
+                condition=models.Q(embedding__isnull=True),
+                name="chunk_unembedded_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return _shorten_for_str(self.text)
