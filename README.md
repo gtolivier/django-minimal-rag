@@ -224,7 +224,9 @@ embed_pending()
   the backend raises, `replace()` raises its error, but its texts are
   already stored: they stay without a vector until a later
   `embed_pending()` — for the failed batch, one run after its claim times
-  out (see below).
+  out (see below). Django then skips the `on_commit` callbacks registered
+  after `replace()`'s in the same transaction: register yours before, or
+  use `MINIMAL_RAG_DEFER_EMBEDDING`.
 - With `MINIMAL_RAG_DEFER_EMBEDDING = True`, `replace()` never calls the
   backend: the project runs `embed_pending()` itself — from a task queue,
   a cron job or a management command. Any other value than a bool raises
@@ -241,7 +243,9 @@ embed_pending()
   chunks without a vector keeps the claim from scanning the whole table.
   A claim older than `claim_timeout` (10 minutes by default) is taken
   back, so the chunks of a run that crashed are embedded by a later one;
-  a `claim_timeout` of zero or below raises `ValueError`.
+  a run whose claim was taken back stores none of that batch's vectors and
+  does not count them. A `claim_timeout` of zero or below raises
+  `ValueError`.
 - If the backend raises, `embed_pending()` raises its error; the batches
   already embedded keep their vectors, and the failed batch stays claimed,
   so runs started before its claim times out skip it and embed the other
