@@ -220,7 +220,8 @@ embed_pending()
   commits (`transaction.on_commit`): called inside the project's own
   transaction, it embeds when that transaction commits. If the backend
   raises, `replace()` raises its error, but its texts are already stored:
-  they stay without a vector until the next `embed_pending()`.
+  they stay without a vector until a later `embed_pending()` — for the
+  failed batch, one run after its claim times out (see below).
 - With `MINIMAL_RAG_DEFER_EMBEDDING = True`, `replace()` never calls the
   backend: the project runs `embed_pending()` itself — from a task queue,
   a cron job or a management command. Any other value than a bool raises
@@ -234,9 +235,10 @@ embed_pending()
   chunks. A claim older than `claim_timeout` (10 minutes by default) is
   taken back, so the chunks of a run that crashed are embedded by a later
   one.
-- If the backend raises, `embed_pending()` releases the claims of the
-  batch and raises its error; the batches already embedded keep their
-  vectors. When the backend returns another number of vectors than it
+- If the backend raises, `embed_pending()` raises its error; the batches
+  already embedded keep their vectors, and the failed batch stays claimed,
+  so runs started before its claim times out skip it and embed the other
+  pending chunks. When the backend returns another number of vectors than it
   was given texts, `ValueError` is raised (the message gives both counts)
   and the batch stays without vectors.
 - A chunk deleted while its batch is embedded — its source replaced or
