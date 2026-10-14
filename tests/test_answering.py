@@ -603,11 +603,11 @@ def test_answer_instructions_name_the_extract_element() -> None:
     assert "<extract>" in ANSWER_INSTRUCTIONS
 
 
-def test_answer_instructions_name_the_escaped_forms_of_lt_gt_and_amp() -> None:
+def test_answer_instructions_pair_lt_gt_and_amp_with_their_escaped_forms() -> None:
     missing = [
-        escaped
-        for escaped in ("&lt;", "&gt;", "&amp;")
-        if escaped not in ANSWER_INSTRUCTIONS
+        pairing
+        for pairing in ("< is written &lt;", "> is written &gt;", "& is written &amp;")
+        if pairing not in ANSWER_INSTRUCTIONS
     ]
 
     assert missing == []
