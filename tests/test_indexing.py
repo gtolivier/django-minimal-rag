@@ -1355,41 +1355,36 @@ def test_embed_pending_raises_and_stores_no_vector_when_the_backend_miscounts(
 
 
 @pytest.mark.django_db
-def test_embed_pending_raises_the_backend_error_and_a_next_run_skips_the_failed_batch(
+def test_embed_pending_raises_the_backend_error_and_leaves_the_batch_to_the_next_run(
     settings: "Settings",
 ) -> None:
-    failing_calls: list[list[str]] = []
-    use_failing_embeddings(settings, "Answer to question 1.", failing_calls)
-    texts = [f"Answer to question {number}." for number in range(1, 5)]
-    # Stored first, the failing text's chunk is taken in the first batch.
+    use_failing_embeddings(settings, "Answer to question 2.")
+    texts = ["Answer to question 1.", "Answer to question 2."]
     store_pending_chunks("faq:1", texts)
 
     with pytest.raises(EmbeddingFailedError):
-        embed_pending(batch_size=2)
+        embed_pending()
 
-    [failed_call] = failing_calls
-    assert "Answer to question 1." in failed_call
-    other_texts = [text for text in texts if text not in failed_call]
+    # Neither embedded nor claimed: no run is kept from taking them.
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model", "embedding_claimed_at"
+        )
+    ) == [
+        ("Answer to question 1.", None, "", None),
+        ("Answer to question 2.", None, "", None),
+    ]
     calls = use_call_recording_embeddings(settings)
 
-    # Started right after, well within the claim timeout of the failed batch.
-    embedded_count = embed_pending(
-        batch_size=2, claim_timeout=datetime.timedelta(minutes=10)
-    )
+    embedded_count = embed_pending()
 
-    # The failed batch stays claimed: this run embeds only the other chunks.
-    assert embedded_count == len(other_texts)
-    embedded_texts = [text for call in calls for text in call]
-    assert sorted(embedded_texts) == sorted(other_texts)
-    assert sorted(
-        Chunk.objects.filter(embedding__isnull=True, embedding_model="").values_list(
-            "text", flat=True
-        )
-    ) == sorted(failed_call)
-    # RecordingEmbeddings gives each text its position among all texts embedded.
+    assert embedded_count == 2
+    [embedded_texts] = calls
+    assert sorted(embedded_texts) == texts
+    # RecordingEmbeddings gives each text its position in the call.
     assert {
         chunk.text: (chunk.embedding_model, list(chunk.embedding))
-        for chunk in Chunk.objects.filter(embedding__isnull=False)
+        for chunk in Chunk.objects.all()
     } == {
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded_texts)
