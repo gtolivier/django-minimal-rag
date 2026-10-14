@@ -974,3 +974,33 @@ def test_embed_pending_with_every_chunk_embedded_returns_0_without_a_backend(
     del settings.MINIMAL_RAG_EMBEDDINGS
 
     assert embed_pending() == 0
+
+
+@pytest.mark.django_db
+def test_embed_pending_gives_a_chunk_without_a_vector_the_backend_vector_and_model(
+    settings: "Settings",
+) -> None:
+    use_fake_embeddings(settings, dimensions=3)
+    [expected_vector] = FakeEmbeddings(dimensions=3).embed(["Answer to question 1."])
+    source = Source.objects.create(source_key="faq:1")
+    document = Document.objects.create(
+        source=source,
+        title="Question 1",
+        url="https://example.com/faq/1/",
+        language="en",
+    )
+    # A chunk stored before its embedding: no vector, no model.
+    Chunk.objects.create(
+        document=document,
+        rank=0,
+        text="Answer to question 1.",
+        embedding=None,
+        embedding_model="",
+    )
+
+    embedded_count = embed_pending()
+
+    chunk = Chunk.objects.get()
+    assert embedded_count == 1
+    assert chunk.embedding_model == "fake-3"
+    assert list(chunk.embedding) == expected_vector
