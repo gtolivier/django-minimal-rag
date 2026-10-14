@@ -90,15 +90,18 @@ def embed_pending(
 def _claim_pending_chunks(claim_timeout: datetime.timedelta, limit: int) -> list[Chunk]:
     """Claim at most ``limit`` chunks of ``_pending_chunks(claim_timeout)``."""
     claimed_at = timezone.now()
-    ids = list(
-        _pending_chunks(claim_timeout)
-        .order_by("pk")
-        .values_list("pk", flat=True)[:limit]
-    )
-    # One UPDATE takes the chunks, so that no other run takes them too.
-    _pending_chunks(claim_timeout).filter(pk__in=ids).update(
-        embedding_claimed_at=claimed_at
-    )
+    with transaction.atomic():
+        # Rows another transaction locks are skipped, never waited for.
+        ids = list(
+            _pending_chunks(claim_timeout)
+            .select_for_update(skip_locked=True)
+            .order_by("pk")
+            .values_list("pk", flat=True)[:limit]
+        )
+        # One UPDATE takes the chunks, so that no other run takes them too.
+        _pending_chunks(claim_timeout).filter(pk__in=ids).update(
+            embedding_claimed_at=claimed_at
+        )
     return list(
         Chunk.objects.filter(
             pk__in=ids, embedding__isnull=True, embedding_claimed_at=claimed_at
