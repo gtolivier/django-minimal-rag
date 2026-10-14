@@ -626,6 +626,22 @@ def test_replace_deferring_embedding_stores_unchanged_text_of_other_model_unembe
     ]
 
 
+@pytest.mark.django_db
+def test_replace_with_defer_embedding_false_embeds_the_new_texts_as_when_unset(
+    settings: "Settings",
+) -> None:
+    use_fake_embeddings(settings, dimensions=3)
+    backend = FakeEmbeddings(dimensions=3)
+    [expected_vector] = backend.embed(["Answer to question 1."])
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = False
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    chunk = Chunk.objects.get()
+    assert chunk.embedding_model == "fake-3"
+    assert list(chunk.embedding) == expected_vector
+
+
 @pytest.mark.parametrize(
     "non_bool",
     [
