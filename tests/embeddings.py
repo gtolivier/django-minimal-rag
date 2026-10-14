@@ -3,6 +3,8 @@
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
+from django.db import connection
+
 if TYPE_CHECKING:
     from pytest_django import Settings
 
@@ -45,6 +47,27 @@ class RecordingEmbeddings:
             vectors.append([float(len(self.embedded)), 1.0])
             self.embedded.append(text)
         return vectors
+
+
+class TransactionProbingEmbeddings:
+    """A backend recording, on each call, whether a transaction is open.
+
+    Each ``embed()`` call appends to ``transaction_open`` whether the default
+    database connection was in a transaction when it was made: in an atomic
+    block, or out of autocommit mode.
+    """
+
+    model = "transaction-probing"
+
+    def __init__(self, transaction_open: list[bool]) -> None:
+        self.transaction_open = transaction_open
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Record whether a transaction is open; return one vector per text."""
+        self.transaction_open.append(
+            connection.in_atomic_block or not connection.get_autocommit()
+        )
+        return [[float(len(text)), 1.0] for text in texts]
 
 
 class EmbeddingFailedError(Exception):

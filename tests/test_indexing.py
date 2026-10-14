@@ -1126,6 +1126,25 @@ def test_embed_pending_with_a_batch_size_embeds_the_chunks_in_calls_of_that_size
     }
 
 
+@pytest.mark.django_db(transaction=True)
+def test_embed_pending_calls_the_backend_with_no_transaction_open(
+    settings: "Settings",
+) -> None:
+    # A backend call can take long: a transaction open around it would hold
+    # its locks, and a connection, for that long.
+    transaction_open: list[bool] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.TransactionProbingEmbeddings",
+        "OPTIONS": {"transaction_open": transaction_open},
+    }
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    embedded_count = embed_pending(batch_size=1)
+
+    assert embedded_count == 2
+    assert transaction_open == [False, False]
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("batch_size", [0, -1])
 def test_embed_pending_with_a_batch_size_below_1_raises_and_embeds_nothing(
