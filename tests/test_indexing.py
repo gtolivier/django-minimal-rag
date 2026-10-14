@@ -1144,3 +1144,24 @@ def test_embed_pending_with_a_batch_size_below_1_raises_and_embeds_nothing(
         ("Answer to question 1.", None, ""),
         ("Answer to question 2.", None, ""),
     ]
+
+
+@pytest.mark.django_db
+def test_embed_pending_raises_and_stores_no_vector_when_the_backend_miscounts(
+    settings: "Settings",
+) -> None:
+    use_miscounting_embeddings(settings, vector_count=1)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    # Both counts, in any order and wording: 2 texts, 1 vector.
+    with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
+        embed_pending()
+
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
+    ]
