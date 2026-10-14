@@ -276,10 +276,7 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
-    defer_embedding = getattr(settings, DEFER_EMBEDDING_SETTING, False)
-    if not isinstance(defer_embedding, bool):
-        raise ImproperlyConfigured(f"{DEFER_EMBEDDING_SETTING} must be a bool.")
-    if defer_embedding:
+    if _is_embedding_deferred():
         _store_chunks_deferring_embedding(ranked_pieces, plans, embeddings)
         return
     Chunk.objects.bulk_create(
@@ -294,6 +291,15 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
             ranked_pieces, _vectors(plans, embeddings), strict=True
         )
     )
+
+
+def _is_embedding_deferred() -> bool:
+    """Return whether the ``DEFER_EMBEDDING_SETTING`` setting is true."""
+    defer_embedding: object = getattr(settings, DEFER_EMBEDDING_SETTING, False)
+    if not isinstance(defer_embedding, bool):
+        msg = f"The {DEFER_EMBEDDING_SETTING} setting must be a bool."
+        raise ImproperlyConfigured(msg)
+    return defer_embedding
 
 
 def _store_chunks_deferring_embedding(
