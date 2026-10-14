@@ -6,6 +6,7 @@ from collections.abc import Set as AbstractSet
 from typing import Any, NamedTuple
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.db.models.functions import Collate
@@ -275,7 +276,10 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
-    if getattr(settings, DEFER_EMBEDDING_SETTING, False):
+    defer_embedding = getattr(settings, DEFER_EMBEDDING_SETTING, False)
+    if not isinstance(defer_embedding, bool):
+        raise ImproperlyConfigured(f"{DEFER_EMBEDDING_SETTING} must be a bool.")
+    if defer_embedding:
         _store_chunks_deferring_embedding(ranked_pieces, plans, embeddings)
         return
     Chunk.objects.bulk_create(
