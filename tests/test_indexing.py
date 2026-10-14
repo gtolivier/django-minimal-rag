@@ -1535,3 +1535,31 @@ def test_embed_pending_embeds_a_chunk_whose_claim_is_older_than_the_claim_timeou
     chunk = Chunk.objects.get()
     assert chunk.embedding_model == "recording"
     assert list(chunk.embedding) == [0.0, 1.0]
+
+
+@pytest.mark.django_db
+def test_embed_pending_without_a_claim_timeout_takes_back_claims_older_than_10_minutes(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Abandoned answer.", "Recently claimed answer."])
+    now = timezone.now()
+    # Another run claimed this chunk eleven minutes ago and never embedded it.
+    Chunk.objects.filter(text="Abandoned answer.").update(
+        embedding_claimed_at=now - datetime.timedelta(minutes=11)
+    )
+    # Another run claimed this chunk nine minutes ago and may still embed it.
+    Chunk.objects.filter(text="Recently claimed answer.").update(
+        embedding_claimed_at=now - datetime.timedelta(minutes=9)
+    )
+
+    embedded_count = embed_pending()
+
+    assert embedded_count == 1
+    assert calls == [["Abandoned answer."]]
+    abandoned_chunk = Chunk.objects.get(text="Abandoned answer.")
+    assert abandoned_chunk.embedding_model == "recording"
+    assert list(abandoned_chunk.embedding) == [0.0, 1.0]
+    recently_claimed_chunk = Chunk.objects.get(text="Recently claimed answer.")
+    assert recently_claimed_chunk.embedding is None
+    assert recently_claimed_chunk.embedding_model == ""
