@@ -160,7 +160,11 @@ def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> int:
     for chunk in chunks:
         chunk.embedding = vectors[chunk.text]
         chunk.embedding_model = embeddings.model
-    return Chunk.objects.bulk_update(chunks, ["embedding", "embedding_model"])
+    # A chunk another run took back meanwhile has another claim: leave it be.
+    still_claimed = Chunk.objects.filter(
+        embedding_claimed_at=chunks[0].embedding_claimed_at
+    )
+    return still_claimed.bulk_update(chunks, ["embedding", "embedding_model"])
 
 
 class _Plan(NamedTuple):
