@@ -813,6 +813,28 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
     assert locked_inside_the_transaction == ["faq:1"]
 
 
+@pytest.mark.django_db(transaction=True)
+def test_replace_holds_no_source_row_lock_while_the_backend_embeds_by_default(
+    settings: "Settings", other_connection: "BaseDatabaseWrapper"
+) -> None:
+    # MINIMAL_RAG_DEFER_EMBEDDING is left unset: the default. A backend call
+    # can take long: a source row locked around it would block, for that long,
+    # every other replacement or removal of that source.
+    locked_during_each_call: list[list[str]] = []
+
+    def record_the_locked_sources() -> None:
+        locked_during_each_call.append(source_keys_locked_against(other_connection))
+
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": record_the_locked_sources},
+    }
+
+    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+
+    assert locked_during_each_call == [[]]
+
+
 @pytest.mark.django_db
 def test_replace_locks_the_replaced_sources_in_sorted_source_key_order() -> None:
     # Two calls replacing overlapping sources must lock their rows in the same
