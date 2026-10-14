@@ -73,27 +73,39 @@ def embed_pending(
     (``DEFAULT_CLAIM_TIMEOUT`` by default).
     """
     _check_batch_size(batch_size)
-    pending = _claim_pending_chunks(claim_timeout)
-    if not pending:
-        return 0
-    try:
-        embeddings = get_embeddings()
-        chunks_per_call = batch_size or DEFAULT_BATCH_SIZE
-        for start in range(0, len(pending), chunks_per_call):
-            _embed_chunks(pending[start : start + chunks_per_call], embeddings)
-    except BaseException:
-        _release_unembedded(pending)
-        raise
-    return len(pending)
+    chunks_per_call = batch_size or DEFAULT_BATCH_SIZE
+    embedded = 0
+    embeddings = None
+    while batch := _claim_pending_chunks(claim_timeout, chunks_per_call):
+        try:
+            if embeddings is None:
+                embeddings = get_embeddings()
+            _embed_chunks(batch, embeddings)
+        except BaseException:
+            _release_unembedded(batch)
+            raise
+        embedded += len(batch)
+    return embedded
 
 
-def _claim_pending_chunks(claim_timeout: datetime.timedelta | None) -> list[Chunk]:
-    """Claim the chunks of ``_pending_chunks(claim_timeout)`` and return them."""
+def _claim_pending_chunks(
+    claim_timeout: datetime.timedelta | None, limit: int
+) -> list[Chunk]:
+    """Claim at most ``limit`` chunks of ``_pending_chunks(claim_timeout)``."""
     claimed_at = timezone.now()
+    ids = list(
+        _pending_chunks(claim_timeout)
+        .order_by("pk")
+        .values_list("pk", flat=True)[:limit]
+    )
     # One UPDATE takes the chunks, so that no other run takes them too.
-    _pending_chunks(claim_timeout).update(embedding_claimed_at=claimed_at)
+    _pending_chunks(claim_timeout).filter(pk__in=ids).update(
+        embedding_claimed_at=claimed_at
+    )
     return list(
-        Chunk.objects.filter(embedding__isnull=True, embedding_claimed_at=claimed_at)
+        Chunk.objects.filter(
+            pk__in=ids, embedding__isnull=True, embedding_claimed_at=claimed_at
+        ).order_by("pk")
     )
 
 
