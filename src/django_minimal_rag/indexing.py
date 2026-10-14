@@ -61,15 +61,19 @@ def embed_pending(batch_size: int | None = None) -> int:
     if not pending:
         return 0
     embeddings = get_embeddings()
-    step = batch_size or len(pending)
-    for start in range(0, len(pending), step):
-        batch = pending[start : start + step]
-        vectors = _embed_distinct((chunk.text for chunk in batch), embeddings)
-        for chunk in batch:
-            chunk.embedding = vectors[chunk.text]
-            chunk.embedding_model = embeddings.model
-        Chunk.objects.bulk_update(batch, ["embedding", "embedding_model"])
+    chunks_per_call = batch_size or len(pending)
+    for start in range(0, len(pending), chunks_per_call):
+        _embed_chunks(pending[start : start + chunks_per_call], embeddings)
     return len(pending)
+
+
+def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> None:
+    """Give ``chunks`` the vectors of ``embeddings``, in one call, and save them."""
+    vectors = _embed_distinct((chunk.text for chunk in chunks), embeddings)
+    for chunk in chunks:
+        chunk.embedding = vectors[chunk.text]
+        chunk.embedding_model = embeddings.model
+    Chunk.objects.bulk_update(chunks, ["embedding", "embedding_model"])
 
 
 class _Plan(NamedTuple):
