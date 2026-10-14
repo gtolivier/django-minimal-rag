@@ -63,12 +63,7 @@ def embed_pending(
     With ``claim_timeout``, skip the chunks claimed more recently than that.
     """
     _check_batch_size(batch_size)
-    claimed_at = timezone.now()
-    # One UPDATE takes the chunks, so that no other run takes them too.
-    _pending_chunks(claim_timeout).update(embedding_claimed_at=claimed_at)
-    pending = list(
-        Chunk.objects.filter(embedding__isnull=True, embedding_claimed_at=claimed_at)
-    )
+    pending = _claim_pending_chunks(claim_timeout)
     if not pending:
         return 0
     try:
@@ -77,12 +72,26 @@ def embed_pending(
         for start in range(0, len(pending), chunks_per_call):
             _embed_chunks(pending[start : start + chunks_per_call], embeddings)
     except BaseException:
-        # The chunks still waiting go back to the next run.
-        Chunk.objects.filter(
-            pk__in=[chunk.pk for chunk in pending], embedding__isnull=True
-        ).update(embedding_claimed_at=None)
+        _release_unembedded(pending)
         raise
     return len(pending)
+
+
+def _claim_pending_chunks(claim_timeout: datetime.timedelta | None) -> list[Chunk]:
+    """Claim the chunks of ``_pending_chunks(claim_timeout)`` and return them."""
+    claimed_at = timezone.now()
+    # One UPDATE takes the chunks, so that no other run takes them too.
+    _pending_chunks(claim_timeout).update(embedding_claimed_at=claimed_at)
+    return list(
+        Chunk.objects.filter(embedding__isnull=True, embedding_claimed_at=claimed_at)
+    )
+
+
+def _release_unembedded(chunks: Sequence[Chunk]) -> None:
+    """Unclaim those of ``chunks`` still without a vector, for the next run."""
+    Chunk.objects.filter(
+        pk__in=[chunk.pk for chunk in chunks], embedding__isnull=True
+    ).update(embedding_claimed_at=None)
 
 
 def _pending_chunks(claim_timeout: datetime.timedelta | None) -> QuerySet[Chunk]:
