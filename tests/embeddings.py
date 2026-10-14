@@ -189,6 +189,19 @@ def use_miscounting_embeddings(settings: "Settings", vector_count: int) -> None:
     }
 
 
+def use_transaction_probing_embeddings(settings: "Settings") -> list[bool]:
+    """Configure ``TransactionProbingEmbeddings``; return the list it records in.
+
+    Each ``embed()`` call records whether a transaction was open when it was made.
+    """
+    transaction_open: list[bool] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.TransactionProbingEmbeddings",
+        "OPTIONS": {"transaction_open": transaction_open},
+    }
+    return transaction_open
+
+
 def use_failing_embeddings(
     settings: "Settings",
     failing_text: str,

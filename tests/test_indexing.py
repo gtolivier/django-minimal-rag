@@ -29,6 +29,7 @@ from tests.embeddings import (
     use_fake_embeddings,
     use_interleaving_embeddings,
     use_miscounting_embeddings,
+    use_transaction_probing_embeddings,
 )
 from tests.indexing import replace_and_run_on_commit
 from tests.sequences import SinglePassSequence
@@ -113,6 +114,23 @@ def store_pending_chunks(source_key: str, texts: Iterable[str]) -> None:
 def remove_faq_2() -> None:
     """Remove the source "faq:2", as another process would while it is embedded."""
     Source.objects.filter(source_key="faq:2").delete()
+
+
+def only_during_the_first_call(
+    calls: list[list[str]], action: Callable[[], None]
+) -> Callable[[], None]:
+    """A ``during_embed`` running ``action`` during the first backend call only.
+
+    ``calls`` is the list ``InterleavingEmbeddings`` records its calls in,
+    each before running ``during_embed``: a later call finds more than one.
+    """
+
+    def run_action_during_the_first_call() -> None:
+        if len(calls) > 1:
+            return
+        action()
+
+    return run_action_during_the_first_call
 
 
 def stored_content(source: Source) -> tuple[list[object], list[object]]:
@@ -1323,11 +1341,7 @@ def test_embed_pending_calls_the_backend_with_no_transaction_open(
 ) -> None:
     # A backend call can take long: a transaction open around it would hold
     # its locks, and a connection, for that long.
-    transaction_open: list[bool] = []
-    settings.MINIMAL_RAG_EMBEDDINGS = {
-        "BACKEND": "tests.embeddings.TransactionProbingEmbeddings",
-        "OPTIONS": {"transaction_open": transaction_open},
-    }
+    transaction_open = use_transaction_probing_embeddings(settings)
     store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
 
     embedded_count = embed_pending(batch_size=1)
@@ -1496,15 +1510,15 @@ def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_ch
     second_run_counts: list[int] = []
 
     def run_a_second_embed_pending() -> None:
-        # Only during the first run's backend call: the second run's own
-        # backend call comes back here too.
-        if len(calls) > 1:
-            return
         # Stored once the first run has claimed its batch, so left to the second.
         store_pending_chunks("faq:2", ["Answer to question 2."])
         second_run_counts.append(embed_pending())
 
-    use_interleaving_embeddings(settings, run_a_second_embed_pending, calls)
+    # Only during the first run's backend call: the second run's own backend
+    # call comes back here too.
+    use_interleaving_embeddings(
+        settings, only_during_the_first_call(calls, run_a_second_embed_pending), calls
+    )
 
     first_run_count = embed_pending()
 
@@ -1535,15 +1549,15 @@ def test_embed_pending_run_during_replaces_backend_call_skips_the_chunks_it_stor
     pending_run_counts: list[int] = []
 
     def run_embed_pending() -> None:
-        # Only during replace()'s backend call: the run's own backend call
-        # comes back here too.
-        if len(calls) > 1:
-            return
         # Stored once replace() has claimed its chunks, so left to the run.
         store_pending_chunks("faq:2", ["Answer to question 2."])
         pending_run_counts.append(embed_pending())
 
-    use_interleaving_embeddings(settings, run_embed_pending, calls)
+    # Only during replace()'s backend call: the run's own backend call comes
+    # back here too.
+    use_interleaving_embeddings(
+        settings, only_during_the_first_call(calls, run_embed_pending), calls
+    )
 
     replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 3)]})
 
@@ -1572,8 +1586,6 @@ def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
     claimed_during_first_call: dict[str, bool] = {}
 
     def record_which_chunks_are_claimed() -> None:
-        if len(calls) > 1:
-            return
         claimed_during_first_call.update(
             (text, claimed_at is not None)
             for text, claimed_at in Chunk.objects.values_list(
@@ -1581,7 +1593,11 @@ def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
             )
         )
 
-    use_interleaving_embeddings(settings, record_which_chunks_are_claimed, calls)
+    use_interleaving_embeddings(
+        settings,
+        only_during_the_first_call(calls, record_which_chunks_are_claimed),
+        calls,
+    )
 
     embed_pending(batch_size=2)
 
