@@ -140,11 +140,20 @@ implements.
   embedded. That gap is accepted: a missing chunk is better than a stale
   one, which would point to content that no longer exists, and could keep
   permissions that have since been revoked. Removed chunks disappear at
-  once, with the transaction that removes them.
+  once, with the transaction that removes them. Two `embed_pending()`
+  runs do not embed the same chunks: each claims a batch at a time by
+  stamping `Chunk.embedding_claimed_at` in one `UPDATE`, embeds it with no
+  transaction open, then writes the vectors by chunk id. A claim expires
+  after a timeout (10 minutes by default), so a crashed run's chunks are
+  taken back; a failure releases the claims of its batch. A lease column
+  was preferred over a separate queue table, and over row or advisory
+  locks held during the API call.
 - **Synchronous by default, deferred by choice.** By default `replace()`
-  calls `embed_pending()` itself once its transaction is committed:
-  indexing needs no configuration, and its caller sees embedding errors.
-  A setting opts into deferral: `replace()` then only stores the texts,
+  calls `embed_pending()` itself once its transaction is committed
+  (`transaction.on_commit`, so inside the caller's own transaction it
+  waits for that one): indexing needs no configuration, and its caller
+  sees embedding errors. `MINIMAL_RAG_DEFER_EMBEDDING = True` opts into
+  deferral: `replace()` then only stores the texts,
   and the project schedules `embed_pending()` with whatever it already
   uses — Celery, `django.tasks`, cron, a direct call. Deferral being a
   setting makes switching to it a deliberate choice. The package depends
@@ -189,26 +198,31 @@ implements.
   one vector per text. The package ships `FakeEmbeddings`, deterministic
   and with a `dimensions` option, for its tests and the projects'.
 - **Changing embedding models re-embeds.** `replace()` treats a chunk
-  embedded by another model than the current backend's as changed, and
-  re-embeds it even when its text is the same; retrieval reads only the
-  chunks of the current model. A source no producer replaces after the
-  change is therefore not found until it is re-indexed.
+  embedded by another model than the current backend's as changed: it
+  stores it without a vector, and `embed_pending()` embeds it again, even
+  when its text is the same; retrieval reads only the chunks of the
+  current model. `embed_pending()` only fills missing vectors: it does
+  not re-embed the chunks of a previous model that no producer replaces,
+  so such a source is not found until it is re-indexed. An opt-in such as
+  `embed_pending(include_other_models=True)` can be added if projects
+  need it.
 - **Storage.** Three models: `Source` (unique `source_key`) → `Document`
   (`title`, `url`, `language`, `permissions`) → `Chunk` (`rank`, `text`,
-  `embedding_model`, `embedding`), each deleted with its parent. The
-  vector column has no fixed dimension, and each chunk stores the name of
-  the model that embedded it, so a project chooses its dimension without
-  generating a migration of its own; an HNSW index, which needs a fixed
-  dimension, will be a partial expression index per model, added when
-  the number of chunks calls for it (not part of feature 7). Retrieval's
-  distance sits inside a `CASE` on the model name, which keeps other
-  models' vectors out of the comparison but which no index can serve: the
-  index's feature revisits that expression. Permissions are an `ArrayField` of names, so host projects install
-  `django.contrib.postgres`. `title`, `url` and `language` are
-  unbounded text; `source_key` is at most 500 characters, which keeps it
-  within what a PostgreSQL unique index accepts. The app's primary keys
-  are `BigAutoField`, set by its `AppConfig`. Its migration creates the
-  pgvector extension if missing and never drops it on rollback.
+  `embedding_model`, `embedding`, `embedding_claimed_at`), each deleted with
+  its parent. The vector column has no fixed dimension, and each chunk
+  stores the name of the model that embedded it, so a project chooses its
+  dimension without generating a migration of its own; an HNSW index, which
+  needs a fixed dimension, will be a partial expression index per model,
+  added when the number of chunks calls for it (not part of feature 7).
+  Retrieval's distance sits inside a `CASE` on the model name, which keeps
+  other models' vectors out of the comparison but which no index can serve:
+  the index's feature revisits that expression. Permissions are an
+  `ArrayField` of names, so host projects install `django.contrib.postgres`.
+  `title`, `url` and `language` are unbounded text; `source_key` is at most
+  500 characters, which keeps it within what a PostgreSQL unique index
+  accepts. The app's primary keys are `BigAutoField`, set by its
+  `AppConfig`. Its migration creates the pgvector extension if missing and
+  never drops it on rollback.
 - **Permission filtering is part of the vector query.** A document's
   permissions are all required of its reader, and an empty set is readable
   by everyone — django-model-rag's `document.permissions <=
@@ -322,14 +336,13 @@ Provisional: the design pass may reorder, split or merge them.
   `</question>` stays in its element instead of making up another — a
   document or a question the LLM is told to trust. The system prompt says
   how they are written, and to write them as they are in the answer.
-- [ ] **11. Deferred embedding.** `replace()` stores texts without
+- [x] **11. Deferred embedding.** `replace()` stores texts without
   vectors and commits; `embed_pending()` embeds the chunks still missing
   a vector, outside the source locks; retrieval ignores chunks without a
   vector. `replace()` calls `embed_pending()` after its commit unless a
-  setting defers it to the project (see "Decisions"). Settled by the
-  feature: the setting's name, how two concurrent `embed_pending()` runs
-  avoid embedding the same chunks, and whether it also re-embeds the
-  chunks of a previous embedding model that no producer has replaced.
+  setting, `MINIMAL_RAG_DEFER_EMBEDDING`, defers it to the project.
+  Concurrent runs claim their batches with a lease, and `embed_pending()`
+  fills only missing vectors (see "Decisions").
 
 ## Not planned here
 
