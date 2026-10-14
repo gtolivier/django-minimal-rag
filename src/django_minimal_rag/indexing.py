@@ -275,8 +275,21 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
     if getattr(settings, DEFER_EMBEDDING_SETTING, False):
+        stored_vectors = {
+            text: vector
+            for plan in plans
+            for text, vector in plan.stored_vectors.items()
+        }
         Chunk.objects.bulk_create(
-            Chunk(document=stored_document, rank=rank, text=text)
+            Chunk(
+                document=stored_document,
+                rank=rank,
+                text=text,
+                embedding_model=embeddings.model,
+                embedding=stored_vectors[text],
+            )
+            if text in stored_vectors
+            else Chunk(document=stored_document, rank=rank, text=text)
             for rank, stored_document, text in ranked_pieces
         )
         return
