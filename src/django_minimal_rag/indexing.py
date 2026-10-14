@@ -80,11 +80,10 @@ def embed_pending(
         try:
             if embeddings is None:
                 embeddings = get_embeddings()
-            _embed_chunks(batch, embeddings)
+            embedded += _embed_chunks(batch, embeddings)
         except BaseException:
             _release_unembedded(batch)
             raise
-        embedded += len(batch)
     return embedded
 
 
@@ -138,13 +137,16 @@ def _check_batch_size(batch_size: int | None) -> None:
         raise ValueError(message)
 
 
-def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> None:
-    """Give ``chunks`` the vectors of ``embeddings``, in one call, and save them."""
+def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> int:
+    """Give ``chunks`` the vectors of ``embeddings``, in one call, and save them.
+
+    Return how many of them were still stored.
+    """
     vectors = _embed_distinct((chunk.text for chunk in chunks), embeddings)
     for chunk in chunks:
         chunk.embedding = vectors[chunk.text]
         chunk.embedding_model = embeddings.model
-    Chunk.objects.bulk_update(chunks, ["embedding", "embedding_model"])
+    return Chunk.objects.bulk_update(chunks, ["embedding", "embedding_model"])
 
 
 class _Plan(NamedTuple):
