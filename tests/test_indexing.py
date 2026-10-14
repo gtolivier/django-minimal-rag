@@ -609,6 +609,23 @@ def test_replace_deferring_embedding_keeps_the_stored_vector_of_an_unchanged_tex
 
 
 @pytest.mark.django_db
+def test_replace_deferring_embedding_stores_unchanged_text_of_other_model_unembedded(
+    settings: "Settings",
+) -> None:
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+    assert Chunk.objects.get().embedding_model != "recording"
+    calls = use_call_recording_embeddings(settings)
+    settings.MINIMAL_RAG_DEFER_EMBEDDING = True
+
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
+
+    assert calls == []
+    assert list(Chunk.objects.values_list("text", "embedding", "embedding_model")) == [
+        ("Answer to question 1.", None, "")
+    ]
+
+
+@pytest.mark.django_db
 def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
     settings: "Settings",
 ) -> None:
