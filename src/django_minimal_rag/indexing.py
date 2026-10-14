@@ -58,9 +58,10 @@ def embed_pending() -> int:
     if not pending:
         return 0
     embeddings = get_embeddings()
-    vectors = _embed([chunk.text for chunk in pending], embeddings)
-    for chunk, vector in zip(pending, vectors, strict=True):
-        chunk.embedding = vector
+    texts = list(dict.fromkeys(chunk.text for chunk in pending))
+    vectors = dict(zip(texts, _embed(texts, embeddings), strict=True))
+    for chunk in pending:
+        chunk.embedding = vectors[chunk.text]
         chunk.embedding_model = embeddings.model
     Chunk.objects.bulk_update(pending, ["embedding", "embedding_model"])
     return len(pending)
