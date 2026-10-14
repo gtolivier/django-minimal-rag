@@ -276,21 +276,9 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
         for plan in plans
         for rank, (stored_document, text) in enumerate(plan.pieces)
     )
-    if _is_embedding_deferred():
-        _store_chunks_deferring_embedding(ranked_pieces, plans, embeddings)
-        return
-    Chunk.objects.bulk_create(
-        Chunk(
-            document=stored_document,
-            rank=rank,
-            text=text,
-            embedding_model=embeddings.model,
-            embedding=vector,
-        )
-        for (rank, stored_document, text), vector in zip(
-            ranked_pieces, _vectors(plans, embeddings), strict=True
-        )
-    )
+    _store_chunks_deferring_embedding(ranked_pieces, plans, embeddings)
+    if not _is_embedding_deferred():
+        transaction.on_commit(embed_pending)
 
 
 def _is_embedding_deferred() -> bool:
@@ -327,27 +315,6 @@ def _store_chunks_deferring_embedding(
         else Chunk(document=stored_document, rank=rank, text=text)
         for rank, stored_document, text in ranked_pieces
     )
-
-
-def _vectors(plans: Sequence[_Plan], embeddings: Embeddings) -> list[Any]:
-    """Return one vector per piece of ``plans``, embedding new texts in one call.
-
-    A text already embedded by the same model keeps its vector.
-    """
-    new_vectors = _embed_distinct(
-        (
-            text
-            for plan in plans
-            for _, text in plan.pieces
-            if text not in plan.stored_vectors
-        ),
-        embeddings,
-    )
-    return [
-        plan.stored_vectors[text] if text in plan.stored_vectors else new_vectors[text]
-        for plan in plans
-        for _, text in plan.pieces
-    ]
 
 
 def _embed_distinct(texts: Iterable[str], embeddings: Embeddings) -> dict[str, Any]:
