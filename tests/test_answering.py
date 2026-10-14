@@ -6,9 +6,9 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 
 from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
-from django_minimal_rag.indexing import Indexer
 from tests.documents import SampleDocument, public_page
 from tests.embeddings import use_chosen_embeddings
+from tests.indexing import replace_and_run_on_commit
 from tests.llms import remove_llm_setting, use_canned_llm
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ def index_one_chunk_near(
 ) -> None:
     """Index ``page`` as one chunk, at a cosine distance about 0.005 to ``question``."""
     use_chosen_embeddings(settings, {page.text: [1.0, 0.0], question: [1.0, 0.1]})
-    Indexer().replace({page.source_key: [page]})
+    replace_and_run_on_commit({page.source_key: [page]})
 
 
 def prompt_answering_from_one_titled_chunk(
@@ -66,7 +66,7 @@ def index_three_chunks_near(
             farthest: [1.0, 1.0],
         },
     )
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "page:1": [public_page(middle, source_key="page:1")],
             "page:2": [public_page(farthest, source_key="page:2")],
@@ -117,7 +117,7 @@ def index_week_and_saturday_schedules(
     )
     week_pages = [page_cited_as(week, text) for text in (weekday_text, sunday_text)]
     saturday_page = page_cited_as(saturday, saturday_text)
-    Indexer().replace(
+    replace_and_run_on_commit(
         {week.source_key: week_pages, saturday.source_key: [saturday_page]}
     )
     return week, saturday, (weekday_text, saturday_text, sunday_text)
@@ -153,7 +153,7 @@ def test_answer_with_only_a_chunk_beyond_max_distance_returns_none_without_llm(
     question = "Where is the shop?"
     # Cosine distance of the chunk to the question: 1.0, the vectors are orthogonal.
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [0.0, 1.0]})
-    Indexer().replace({"page:1": [public_page(chunk_text)]})
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
 
     answered = answer(question, permissions=frozenset(), max_distance=0.5)
 
@@ -256,7 +256,7 @@ def test_answer_gives_the_llm_each_chunk_under_its_document_title(
         settings,
         {question: [1.0, 0.0], weekday_text: [1.0, 0.1], weekend_text: [1.0, 0.5]},
     )
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "page:1": [
                 replace(public_page(weekday_text, "page:1"), title=weekday_title)
@@ -506,7 +506,7 @@ def test_answer_escapes_the_tags_of_the_second_of_two_documents_of_two_chunks(
         url="https://example.com/hours/weekend/",
         source_key="page:2",
     )
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             week.source_key: [
                 page_cited_as(week, text) for text in (weekday_text, sunday_text)
@@ -600,7 +600,7 @@ def test_answer_gives_the_llm_each_document_of_one_source_its_own_document_eleme
     french = Citation(title=other_title, url=other_url, source_key=source_key)
     english_page = page_cited_as(english, english_text)
     french_page = replace(page_cited_as(french, french_text), language="fr")
-    Indexer().replace({source_key: [english_page, french_page]})
+    replace_and_run_on_commit({source_key: [english_page, french_page]})
 
     answer(question, permissions=frozenset(), max_distance=0.5)
 
@@ -698,7 +698,7 @@ def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
     secret_page = replace(
         public_page(secret_text), permissions=frozenset({"app.view_secret"})
     )
-    Indexer().replace({"page:1": [secret_page, public_page(public_text)]})
+    replace_and_run_on_commit({"page:1": [secret_page, public_page(public_text)]})
 
     answer(question, permissions=frozenset({"app.view_other"}), max_distance=1.0)
 
@@ -772,7 +772,7 @@ def test_answer_cites_each_document_of_one_source_with_its_own_title_and_url(
     )
     english_page = page_cited_as(english, english_text)
     french_page = replace(page_cited_as(french, french_text), language="fr")
-    Indexer().replace({source_key: [english_page, french_page]})
+    replace_and_run_on_commit({source_key: [english_page, french_page]})
     use_canned_llm(settings, "The shop opens at nine.")
 
     answered = answer(question, permissions=frozenset(), max_distance=0.5)

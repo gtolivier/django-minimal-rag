@@ -24,6 +24,7 @@ from tests.embeddings import (
     use_fake_embeddings,
     use_miscounting_embeddings,
 )
+from tests.indexing import replace_and_run_on_commit
 from tests.sequences import SinglePassSequence
 
 if TYPE_CHECKING:
@@ -170,7 +171,7 @@ def wait_until_a_query_waits_for_a_lock(
 
 @pytest.mark.django_db
 def test_replace_with_no_groups_stores_nothing() -> None:
-    Indexer().replace({})
+    replace_and_run_on_commit({})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -183,19 +184,19 @@ def test_replace_with_no_groups_succeeds_without_an_embedding_backend_configured
 ) -> None:
     del settings.MINIMAL_RAG_EMBEDDINGS
 
-    Indexer().replace({})
+    replace_and_run_on_commit({})
 
 
 @pytest.mark.django_db
 def test_replace_group_of_one_document_creates_source_with_group_key() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     assert list(Source.objects.values_list("source_key", flat=True)) == ["faq:1"]
 
 
 @pytest.mark.django_db
 def test_replace_group_of_one_document_stores_it_under_the_group_source() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     assert list(
         Document.objects.values_list("source__source_key", "title", "url", "language")
@@ -204,7 +205,7 @@ def test_replace_group_of_one_document_stores_it_under_the_group_source() -> Non
 
 @pytest.mark.django_db
 def test_replace_stores_each_group_under_its_own_source() -> None:
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "faq:1": [faq_entry(1)],
             "faq:2": [faq_entry(2), faq_entry_under("faq:2", 3)],
@@ -224,10 +225,10 @@ def test_replace_stores_each_group_under_its_own_source() -> None:
 
 @pytest.mark.django_db
 def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
     source_pk = Source.objects.get().pk
 
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry_under("faq:1", 2), faq_entry_under("faq:1", 3)]}
     )
 
@@ -246,9 +247,9 @@ def test_replace_of_a_stored_source_keeps_it_with_only_the_new_content() -> None
 
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
-    Indexer().replace({"faq:1": []})
+    replace_and_run_on_commit({"faq:1": []})
 
     assert not Source.objects.filter(source_key="faq:1").exists()
     assert not Document.objects.exists()
@@ -257,7 +258,7 @@ def test_replace_with_an_empty_group_removes_its_stored_source() -> None:
 
 @pytest.mark.django_db
 def test_replace_with_an_empty_group_for_an_unknown_key_stores_nothing() -> None:
-    Indexer().replace({"faq:1": []})
+    replace_and_run_on_commit({"faq:1": []})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -268,10 +269,10 @@ def test_replace_with_an_empty_group_for_an_unknown_key_stores_nothing() -> None
 def test_replace_with_only_empty_groups_removes_sources_without_a_backend_configured(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
     del settings.MINIMAL_RAG_EMBEDDINGS
 
-    Indexer().replace({"faq:1": [], "faq:2": []})
+    replace_and_run_on_commit({"faq:1": [], "faq:2": []})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -280,12 +281,12 @@ def test_replace_with_only_empty_groups_removes_sources_without_a_backend_config
 
 @pytest.mark.django_db
 def test_replace_leaves_sources_absent_from_the_call_as_they_are() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
     source = Source.objects.get()
     document = Document.objects.get()
     chunk = Chunk.objects.get()
 
-    Indexer().replace({"faq:2": [faq_entry(2)]})
+    replace_and_run_on_commit({"faq:2": [faq_entry(2)]})
 
     assert Source.objects.filter(source_key="faq:1").get().pk == source.pk
     assert list(
@@ -309,7 +310,7 @@ def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> Non
         faq_entry(1), permissions=frozenset({"faq.view_faq", "app.change_note"})
     )
 
-    Indexer().replace({"faq:1": [document]})
+    replace_and_run_on_commit({"faq:1": [document]})
 
     assert list(Document.objects.values_list("permissions", flat=True)) == [
         ["app.change_note", "faq.view_faq"]
@@ -318,7 +319,7 @@ def test_replace_stores_a_frozenset_of_permissions_as_their_sorted_list() -> Non
 
 @pytest.mark.django_db
 def test_replace_stores_a_short_document_text_as_one_chunk_of_rank_0() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     document = Document.objects.get()
     assert list(Chunk.objects.values_list("document", "rank", "text")) == [
@@ -339,7 +340,7 @@ def test_replace_stores_a_long_document_text_as_its_chunks_in_rank_order() -> No
     )
     expected = [(chunk.rank, chunk.text) for chunk in chunk_group([long_document])]
 
-    Indexer().replace({"guide:1": [long_document]})
+    replace_and_run_on_commit({"guide:1": [long_document]})
 
     document = Document.objects.get()
     stored = Chunk.objects.filter(document=document).order_by("rank")
@@ -369,7 +370,7 @@ def test_replace_stores_each_document_of_a_group_with_its_chunks_ranked_across()
         permissions=frozenset(),
     )
 
-    Indexer().replace({"guide:1": [two_chunk_document, one_chunk_document]})
+    replace_and_run_on_commit({"guide:1": [two_chunk_document, one_chunk_document]})
 
     stored = Chunk.objects.order_by("rank")
     assert list(stored.values_list("rank", "document__title", "text")) == [
@@ -385,7 +386,7 @@ def test_replace_stores_a_document_given_twice_in_a_group_twice_with_its_chunks(
 ):
     entry = faq_entry(1)
 
-    Indexer().replace({"faq:1": [entry, entry]})
+    replace_and_run_on_commit({"faq:1": [entry, entry]})
 
     first, second = Document.objects.order_by("pk")
     stored = Chunk.objects.order_by("rank")
@@ -401,7 +402,7 @@ def test_replace_stores_all_documents_and_chunks_of_a_group_iterable_only_once()
 ):
     group = SinglePassSequence([faq_entry(1), faq_entry_under("faq:1", 2)])
 
-    Indexer().replace({"faq:1": group})
+    replace_and_run_on_commit({"faq:1": group})
 
     assert sorted(Document.objects.values_list("source__source_key", "title")) == [
         ("faq:1", "Question 1"),
@@ -424,7 +425,7 @@ def test_replace_stores_an_unhashable_document_with_its_chunks() -> None:
         permissions=frozenset(),
     )
 
-    Indexer().replace({"faq:1": [document]})
+    replace_and_run_on_commit({"faq:1": [document]})
 
     assert list(
         Document.objects.values_list("source__source_key", "title", "url", "language")
@@ -442,7 +443,7 @@ def test_replace_embeds_each_chunk_with_the_configured_backend(
     backend = FakeEmbeddings(dimensions=3)
     [expected_vector] = backend.embed(["Answer to question 1."])
 
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     chunk = Chunk.objects.get()
     assert chunk.embedding_model == "fake-3"
@@ -454,13 +455,13 @@ def test_replace_with_the_same_texts_embeds_nothing_and_keeps_each_vector(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     vectors_before = {
         chunk.text: list(chunk.embedding) for chunk in Chunk.objects.all()
     }
     embedded_before = len(embedded)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert embedded[embedded_before:] == []
     assert {
@@ -473,7 +474,7 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
     settings: "Settings",
 ) -> None:
     embedded = use_recording_embeddings(settings)
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "faq:1": [
                 faq_entry(1),
@@ -490,7 +491,7 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
         faq_entry_under("faq:1", 2), text="New answer to question 2."
     )
 
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1), changed_entry, faq_entry_under("faq:1", 3)]}
     )
 
@@ -511,10 +512,10 @@ def test_replace_changing_one_text_embeds_it_only_and_keeps_the_other_vectors(
 def test_replace_re_embeds_a_text_stored_under_another_model(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
     embedded = use_recording_embeddings(settings)
 
-    Indexer().replace({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1), faq_entry_under("faq:1", 2)]})
 
     assert sorted(embedded) == ["Answer to question 1.", "Answer to question 2."]
     assert {
@@ -532,7 +533,7 @@ def test_replace_of_several_groups_embeds_the_new_texts_of_all_in_one_backend_ca
 ) -> None:
     calls = use_call_recording_embeddings(settings)
 
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
     )
 
@@ -550,7 +551,7 @@ def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
     entry_1 = dataclasses.replace(faq_entry(1), text=shared_text)
     entry_2 = dataclasses.replace(faq_entry(2), text=shared_text)
 
-    Indexer().replace({"faq:1": [entry_1], "faq:2": [entry_2]})
+    replace_and_run_on_commit({"faq:1": [entry_1], "faq:2": [entry_2]})
 
     assert embedded == [shared_text]
     assert {
@@ -563,7 +564,7 @@ def test_replace_embeds_a_new_text_of_two_groups_once_and_gives_both_its_vector(
 def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
     settings: "Settings",
 ) -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)]})
     source = Source.objects.get(source_key="faq:1")
     content_before = stored_content(source)
     settings.MINIMAL_RAG_EMBEDDINGS = {
@@ -574,7 +575,7 @@ def test_replace_stores_nothing_when_the_backend_raises_on_a_later_group(
     new_entry_2 = dataclasses.replace(faq_entry(2), text="New answer to question 2.")
 
     with pytest.raises(EmbeddingFailedError):
-        Indexer().replace({"faq:1": [new_entry_1], "faq:2": [new_entry_2]})
+        replace_and_run_on_commit({"faq:1": [new_entry_1], "faq:2": [new_entry_2]})
 
     assert stored_content(source) == content_before
 
@@ -595,7 +596,7 @@ def test_replace_raises_and_stores_nothing_when_the_backend_returns_too_few_vect
 
     # Both counts, in any order and wording: 2 texts, 1 vector.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\b2\b)(?=.*\b1\b)"):
-        Indexer().replace({"guide:1": [two_chunk_document]})
+        replace_and_run_on_commit({"guide:1": [two_chunk_document]})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -610,7 +611,7 @@ def test_replace_raises_when_the_backend_returns_too_many_vectors(
 
     # Both counts, in any order and wording: 1 text, 3 vectors.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\b1\b)(?=.*\b3\b)"):
-        Indexer().replace({"faq:1": [faq_entry(1)]})
+        replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
 
 @pytest.mark.django_db
@@ -619,7 +620,7 @@ def test_replace_raises_and_stores_nothing_for_a_document_of_another_source_key(
 ):
     # Both keys, in any order and wording: the group's and the document's.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:1\b)(?=.*\bfaq:2\b)"):
-        Indexer().replace({"faq:1": [faq_entry(2)]})
+        replace_and_run_on_commit({"faq:1": [faq_entry(2)]})
 
     assert not Source.objects.exists()
     assert not Document.objects.exists()
@@ -633,7 +634,7 @@ def test_replace_raises_and_stores_nothing_for_the_last_document_of_a_later_grou
     # Both keys, in any order and wording: the second group's and its last
     # document's.
     with pytest.raises(ValueError, match=r"(?s)^(?=.*\bfaq:5\b)(?=.*\bfaq:7\b)"):
-        Indexer().replace(
+        replace_and_run_on_commit(
             {
                 "faq:3": [faq_entry(3)],
                 "faq:5": [faq_entry(5), faq_entry_under("faq:5", 6), faq_entry(7)],
@@ -662,12 +663,12 @@ def test_replace_locks_the_row_of_each_replaced_source_until_its_transaction_end
 def test_replace_locks_the_replaced_sources_in_sorted_source_key_order() -> None:
     # Two calls replacing overlapping sources must lock their rows in the same
     # order, whatever the order of their groups, or they can deadlock.
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
     )
 
     with CaptureQueriesContext(connection) as captured:
-        Indexer().replace(
+        replace_and_run_on_commit(
             {"faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)], "faq:1": [faq_entry(1)]}
         )
 
@@ -684,10 +685,10 @@ def test_replace_with_an_empty_group_locks_its_source_before_deleting_anything()
 ):
     # A replacement locks the source row, then deletes its documents; a removal
     # must take the same lock first, or the two can deadlock.
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     with CaptureQueriesContext(connection) as captured:
-        Indexer().replace({"faq:1": []})
+        replace_and_run_on_commit({"faq:1": []})
 
     queries = captured.captured_queries
     first_delete = next(
@@ -704,12 +705,12 @@ def test_replace_locks_removed_and_replaced_sources_in_sorted_source_key_order()
 ):
     # Two calls sharing sources must lock their rows in the same order, whether
     # each source is replaced or removed, or they can deadlock.
-    Indexer().replace(
+    replace_and_run_on_commit(
         {"faq:1": [faq_entry(1)], "faq:2": [faq_entry(2)], "faq:3": [faq_entry(3)]}
     )
 
     with CaptureQueriesContext(connection) as captured:
-        Indexer().replace({"faq:3": [faq_entry(3)], "faq:1": [], "faq:2": []})
+        replace_and_run_on_commit({"faq:3": [faq_entry(3)], "faq:1": [], "faq:2": []})
 
     assert source_keys_locked_by(captured.captured_queries) == [
         "faq:1",
@@ -729,7 +730,7 @@ def test_prune_with_no_source_stored_does_nothing() -> None:
 
 @pytest.mark.django_db
 def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> None:
-    Indexer().replace({"faq:1": [faq_entry(1)]})
+    replace_and_run_on_commit({"faq:1": [faq_entry(1)]})
 
     Indexer().prune("faq", set())
 
@@ -742,7 +743,7 @@ def test_prune_with_no_kept_key_removes_a_stored_source_with_its_content() -> No
 def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others() -> (
     None
 ):
-    Indexer().replace(
+    replace_and_run_on_commit(
         {
             "faq:1": [faq_entry(1)],
             "faq:2": [faq_entry(2)],
@@ -772,7 +773,7 @@ def test_prune_keeps_the_kept_sources_with_their_content_and_removes_the_others(
 
 @pytest.mark.django_db
 def test_prune_leaves_the_sources_of_another_model_label_with_their_content() -> None:
-    Indexer().replace({"news:1": [faq_entry_under("news:1", 1)]})
+    replace_and_run_on_commit({"news:1": [faq_entry_under("news:1", 1)]})
     other_source = Source.objects.get()
     content_before = stored_content(other_source)
 
@@ -790,7 +791,9 @@ def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one(
 ):
     # The model label is matched up to the colon: "app.note" is not a model
     # label of "app.notebook:3".
-    Indexer().replace({"app.notebook:3": [faq_entry_under("app.notebook:3", 3)]})
+    replace_and_run_on_commit(
+        {"app.notebook:3": [faq_entry_under("app.notebook:3", 3)]}
+    )
     other_source = Source.objects.get()
     content_before = stored_content(other_source)
 
@@ -806,7 +809,7 @@ def test_prune_leaves_a_source_whose_model_label_only_starts_with_the_given_one(
 def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None:
     # In a SQL LIKE pattern, "_" matches any character: "my_app.page" would
     # then be a model label of "myXapp.page:1".
-    Indexer().replace({"myXapp.page:1": [faq_entry_under("myXapp.page:1", 1)]})
+    replace_and_run_on_commit({"myXapp.page:1": [faq_entry_under("myXapp.page:1", 1)]})
     other_source = Source.objects.get()
     content_before = stored_content(other_source)
 
@@ -821,7 +824,7 @@ def test_prune_matches_the_model_label_literally_not_as_a_like_pattern() -> None
 @pytest.mark.django_db
 def test_prune_raises_and_removes_nothing_for_an_empty_model_label() -> None:
     # ":1" is the key an empty model label would match up to the colon.
-    Indexer().replace({":1": [faq_entry_under(":1", 1)]})
+    replace_and_run_on_commit({":1": [faq_entry_under(":1", 1)]})
     stored_source = Source.objects.get()
     content_before = stored_content(stored_source)
 
@@ -840,7 +843,7 @@ def test_prune_raises_and_removes_nothing_for_a_model_label_holding_the_separato
     None
 ):
     # "faq::1" is a key the model label "faq:" would match up to the colon.
-    Indexer().replace({"faq::1": [faq_entry_under("faq::1", 1)]})
+    replace_and_run_on_commit({"faq::1": [faq_entry_under("faq::1", 1)]})
     stored_source = Source.objects.get()
     content_before = stored_content(stored_source)
 
