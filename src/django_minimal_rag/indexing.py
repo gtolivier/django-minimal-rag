@@ -81,13 +81,9 @@ def embed_pending(
     embedded = 0
     embeddings: Embeddings | None = None  # built only if a chunk is pending
     while batch := _claim_pending_chunks(claim_timeout, batch_size):
-        try:
-            if embeddings is None:
-                embeddings = get_embeddings()
-            embedded += _embed_chunks(batch, embeddings)
-        except BaseException:
-            _release_unembedded(batch)
-            raise
+        if embeddings is None:
+            embeddings = get_embeddings()
+        embedded += _embed_chunks(batch, embeddings)
     return embedded
 
 
@@ -108,13 +104,6 @@ def _claim_pending_chunks(claim_timeout: datetime.timedelta, limit: int) -> list
             pk__in=ids, embedding__isnull=True, embedding_claimed_at=claimed_at
         ).order_by("pk")
     )
-
-
-def _release_unembedded(chunks: Sequence[Chunk]) -> None:
-    """Unclaim those of ``chunks`` still without a vector, for the next run."""
-    Chunk.objects.filter(
-        pk__in=[chunk.pk for chunk in chunks], embedding__isnull=True
-    ).update(embedding_claimed_at=None)
 
 
 def _pending_chunks(claim_timeout: datetime.timedelta) -> QuerySet[Chunk]:
