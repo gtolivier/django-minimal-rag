@@ -1262,6 +1262,35 @@ def test_embed_pending_keeps_the_vectors_of_earlier_batches_when_a_later_one_fai
 
 
 @pytest.mark.django_db
+def test_embed_pending_gives_no_vector_to_a_chunk_deleted_during_its_backend_call(
+    settings: "Settings",
+) -> None:
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+
+    def remove_faq_2() -> None:
+        # The source is removed while its chunk is being embedded.
+        Source.objects.filter(source_key="faq:2").delete()
+
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": remove_faq_2},
+    }
+
+    embed_pending()
+
+    # The deleted chunk stays deleted; InterleavingEmbeddings gives each text
+    # its length, and the rest of the batch gets its vectors.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        "Answer to question 1.": ("interleaving", [21.0, 1.0]),
+        "More on question 1.": ("interleaving", [19.0, 1.0]),
+    }
+
+
+@pytest.mark.django_db
 def test_embed_pending_skips_a_chunk_claimed_within_the_claim_timeout(
     settings: "Settings",
 ) -> None:

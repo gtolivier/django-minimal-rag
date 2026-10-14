@@ -1,6 +1,6 @@
 """The test bench's embedding backends, and helpers configuring them for a test."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from django.db import connection
@@ -67,6 +67,25 @@ class TransactionProbingEmbeddings:
         self.transaction_open.append(
             connection.in_atomic_block or not connection.get_autocommit()
         )
+        return [[float(len(text)), 1.0] for text in texts]
+
+
+class InterleavingEmbeddings:
+    """A backend running ``during_embed`` inside each ``embed()`` call.
+
+    ``during_embed`` stands for what other processes do while the backend is
+    busy, such as deleting a source whose chunks are being embedded. Each text
+    gets its length as its vector.
+    """
+
+    model = "interleaving"
+
+    def __init__(self, during_embed: Callable[[], object]) -> None:
+        self.during_embed = during_embed
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Run ``during_embed``, then return one vector per text."""
+        self.during_embed()
         return [[float(len(text)), 1.0] for text in texts]
 
 
