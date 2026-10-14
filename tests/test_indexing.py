@@ -1122,3 +1122,25 @@ def test_embed_pending_with_a_batch_size_embeds_the_chunks_in_calls_of_that_size
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded_texts)
     }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_embed_pending_with_a_batch_size_below_1_raises_and_embeds_nothing(
+    settings: "Settings", batch_size: int
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    with pytest.raises(ValueError, match="batch_size"):
+        embed_pending(batch_size=batch_size)
+
+    assert calls == []
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
+    ]
