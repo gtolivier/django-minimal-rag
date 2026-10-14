@@ -1,4 +1,5 @@
 import dataclasses
+import datetime
 import re
 import threading
 import time
@@ -13,6 +14,7 @@ from django.db import (
     transaction,
 )
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from django_minimal_rag.chunking import chunk_group
 from django_minimal_rag.embeddings import FakeEmbeddings
@@ -1238,3 +1240,25 @@ def test_embed_pending_keeps_the_vectors_of_earlier_batches_when_a_later_one_fai
         chunk.text: (chunk.embedding_model, list(chunk.embedding))
         for chunk in Chunk.objects.filter(embedding__isnull=False)
     } == {text: ("failing", [float(len(text)), 1.0]) for text in embedded_texts}
+
+
+@pytest.mark.django_db
+def test_embed_pending_skips_a_chunk_claimed_within_the_claim_timeout(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Claimed answer.", "Unclaimed answer."])
+    # Another run claimed this chunk two minutes ago and may still embed it.
+    claimed_at = timezone.now() - datetime.timedelta(minutes=2)
+    Chunk.objects.filter(text="Claimed answer.").update(embedding_claimed_at=claimed_at)
+
+    embedded_count = embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+
+    assert embedded_count == 1
+    assert calls == [["Unclaimed answer."]]
+    claimed_chunk = Chunk.objects.get(text="Claimed answer.")
+    assert claimed_chunk.embedding is None
+    assert claimed_chunk.embedding_model == ""
+    unclaimed_chunk = Chunk.objects.get(text="Unclaimed answer.")
+    assert unclaimed_chunk.embedding_model == "recording"
+    assert list(unclaimed_chunk.embedding) == [0.0, 1.0]
