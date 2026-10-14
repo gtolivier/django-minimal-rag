@@ -10,6 +10,7 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.db import (
     DEFAULT_DB_ALIAS,
+    OperationalError,
     connection,
     connections,
     transaction,
@@ -1526,6 +1527,47 @@ def test_embed_pending_leaves_later_batches_unclaimed_while_embedding_the_first(
     assert len(first_call) == 2
     # Only the batch being embedded is claimed: another run may take the rest.
     assert claimed_during_first_call == {text: text in first_call for text in texts}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_embed_pending_skips_pending_chunks_whose_rows_another_transaction_locks(
+    settings: "Settings", other_connection: "BaseDatabaseWrapper"
+) -> None:
+    # Another process may hold a pending chunk's row locked for long, such as
+    # a replacement deleting it in its transaction: waiting for that lock would
+    # hold up the embedding of every other pending chunk for as long.
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Locked answer."])
+    store_pending_chunks("faq:2", ["Answer to question 2.", "More on question 2."])
+    locked_pk = Chunk.objects.get(text="Locked answer.").pk
+    table = other_connection.ops.quote_name(Chunk._meta.db_table)
+    # Out of autocommit mode, the lock lasts until the rollback below; the
+    # fixture closing the connection also releases it, should this fail.
+    other_connection.set_autocommit(False)
+    with other_connection.cursor() as cursor:
+        cursor.execute(f"SELECT FROM {table} WHERE id = %s FOR UPDATE", [locked_pk])
+    with connection.cursor() as cursor:
+        # Bounds the wait of a run blocked on the lock: it fails, never hangs.
+        cursor.execute("SET lock_timeout = '1s'")
+    try:
+        embedded_count = embed_pending()
+    except OperationalError as error:
+        pytest.fail(f"embed_pending() waited for the locked chunk: {error}")
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("RESET lock_timeout")
+        other_connection.rollback()
+
+    assert embedded_count == 2
+    assert [sorted(call) for call in calls] == [
+        ["Answer to question 2.", "More on question 2."]
+    ]
+    locked_chunk = Chunk.objects.get(pk=locked_pk)
+    assert locked_chunk.embedding is None
+    assert locked_chunk.embedding_model == ""
+    assert sorted(
+        Chunk.objects.filter(embedding_model="recording").values_list("text", flat=True)
+    ) == ["Answer to question 2.", "More on question 2."]
 
 
 @pytest.mark.django_db
