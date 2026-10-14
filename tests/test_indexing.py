@@ -1590,3 +1590,27 @@ def test_embed_pending_without_a_claim_timeout_takes_back_claims_older_than_10_m
     recently_claimed_chunk = Chunk.objects.get(text="Recently claimed answer.")
     assert recently_claimed_chunk.embedding is None
     assert recently_claimed_chunk.embedding_model == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "claim_timeout", [datetime.timedelta(0), datetime.timedelta(minutes=-1)]
+)
+def test_embed_pending_with_a_claim_timeout_of_zero_or_below_raises_and_embeds_nothing(
+    settings: "Settings", claim_timeout: datetime.timedelta
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    store_pending_chunks("faq:1", ["Answer to question 1.", "Answer to question 2."])
+
+    with pytest.raises(ValueError, match="claim_timeout"):
+        embed_pending(claim_timeout=claim_timeout)
+
+    assert calls == []
+    assert list(
+        Chunk.objects.order_by("rank").values_list(
+            "text", "embedding", "embedding_model"
+        )
+    ) == [
+        ("Answer to question 1.", None, ""),
+        ("Answer to question 2.", None, ""),
+    ]
