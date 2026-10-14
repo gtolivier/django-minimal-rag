@@ -74,6 +74,8 @@ def embed_pending(
     """
     _check_batch_size(batch_size)
     chunks_per_call = batch_size or DEFAULT_BATCH_SIZE
+    if claim_timeout is None:
+        claim_timeout = DEFAULT_CLAIM_TIMEOUT
     embedded = 0
     embeddings: Embeddings | None = None  # built only if a chunk is pending
     while batch := _claim_pending_chunks(claim_timeout, chunks_per_call):
@@ -87,9 +89,7 @@ def embed_pending(
     return embedded
 
 
-def _claim_pending_chunks(
-    claim_timeout: datetime.timedelta | None, limit: int
-) -> list[Chunk]:
+def _claim_pending_chunks(claim_timeout: datetime.timedelta, limit: int) -> list[Chunk]:
     """Claim at most ``limit`` chunks of ``_pending_chunks(claim_timeout)``."""
     claimed_at = timezone.now()
     ids = list(
@@ -115,16 +115,13 @@ def _release_unembedded(chunks: Sequence[Chunk]) -> None:
     ).update(embedding_claimed_at=None)
 
 
-def _pending_chunks(claim_timeout: datetime.timedelta | None) -> QuerySet[Chunk]:
+def _pending_chunks(claim_timeout: datetime.timedelta) -> QuerySet[Chunk]:
     """Return the chunks waiting for a vector, without those claimed recently.
 
     A chunk is claimed recently when it was claimed less than ``claim_timeout``
-    ago; ``claim_timeout`` defaults to ``DEFAULT_CLAIM_TIMEOUT``.
+    ago.
     """
-    waiting = Chunk.objects.filter(embedding__isnull=True)
-    if claim_timeout is None:
-        claim_timeout = DEFAULT_CLAIM_TIMEOUT
-    return waiting.filter(
+    return Chunk.objects.filter(embedding__isnull=True).filter(
         Q(embedding_claimed_at__isnull=True)
         | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
     )
@@ -306,8 +303,8 @@ def _is_embedding_deferred() -> bool:
     """Return whether the ``DEFER_EMBEDDING_SETTING`` setting is true."""
     defer_embedding: object = getattr(settings, DEFER_EMBEDDING_SETTING, False)
     if not isinstance(defer_embedding, bool):
-        msg = f"The {DEFER_EMBEDDING_SETTING} setting must be a bool."
-        raise ImproperlyConfigured(msg)
+        message = f"The {DEFER_EMBEDDING_SETTING} setting must be a bool."
+        raise ImproperlyConfigured(message)
     return defer_embedding
 
 
