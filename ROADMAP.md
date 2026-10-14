@@ -248,8 +248,9 @@ implements.
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
   first, then the `<question>`. Titles, extracts and the question are
   escaped (`&`, `<` and `>`, as `html.escape` does without quotes), so no
-  text can close its element, and the system prompt says how they are
-  written. The prompt is not customizable, and answers are not streamed,
+  text can close its element; the system prompt says how they are
+  written, and to write them as they are in the answer, which the package
+  does not unescape. The prompt is not customizable, and answers are not streamed,
   until a project needs it.
 - **Citations are built by the package, not by the LLM.** An `Answer`
   holds the LLM's `text` and its `citations`: one `Citation(title, url,
@@ -320,7 +321,7 @@ Provisional: the design pass may reorder, split or merge them.
   extracts and the question, so a text holding `</extract>` or
   `</question>` stays in its element instead of making up another — a
   document or a question the LLM is told to trust. The system prompt says
-  how they are written.
+  how they are written, and to write them as they are in the answer.
 - [ ] **11. Deferred embedding.** `replace()` stores texts without
   vectors and commits; `embed_pending()` embeds the chunks still missing
   a vector, outside the source locks; retrieval ignores chunks without a
