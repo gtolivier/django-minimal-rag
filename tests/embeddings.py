@@ -55,15 +55,21 @@ class FailingEmbeddings:
     """A backend raising ``EmbeddingFailedError`` when asked to embed ``failing_text``.
 
     Any other text gets a vector, so the texts embedded before it succeed.
+
+    When a ``calls`` list is given, each ``embed()`` call appends the list of
+    the texts it was given to it, the failing call included.
     """
 
     model = "failing"
 
-    def __init__(self, failing_text: str) -> None:
+    def __init__(self, failing_text: str, calls: list[list[str]] | None = None) -> None:
         self.failing_text = failing_text
+        self.calls = calls
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Return one vector per text, or raise if ``failing_text`` is among them."""
+        if self.calls is not None:
+            self.calls.append(list(texts))
         if self.failing_text in texts:
             msg = f"Cannot embed {self.failing_text!r}."
             raise EmbeddingFailedError(msg)

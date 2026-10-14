@@ -1205,3 +1205,36 @@ def test_embed_pending_raises_the_backend_error_and_leaves_the_batch_to_the_next
         text: ("recording", [float(position), 1.0])
         for position, text in enumerate(embedded_texts)
     }
+
+
+@pytest.mark.django_db
+def test_embed_pending_keeps_the_vectors_of_earlier_batches_when_a_later_one_fails(
+    settings: "Settings",
+) -> None:
+    calls: list[list[str]] = []
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.FailingEmbeddings",
+        "OPTIONS": {"failing_text": "Answer to question 4.", "calls": calls},
+    }
+    texts = [f"Answer to question {number}." for number in range(1, 5)]
+    # Stored last, the failing text's chunk is taken in a later batch.
+    store_pending_chunks("faq:1", texts)
+
+    with pytest.raises(EmbeddingFailedError):
+        embed_pending(batch_size=2)
+
+    *earlier_calls, failed_call = calls
+    assert "Answer to question 4." in failed_call
+    embedded_texts = [text for call in earlier_calls for text in call]
+    assert embedded_texts
+    # The failed batch's chunks still await a vector, the others have theirs.
+    assert sorted(
+        Chunk.objects.filter(embedding__isnull=True, embedding_model="").values_list(
+            "text", flat=True
+        )
+    ) == sorted(failed_call)
+    # FailingEmbeddings gives each text its length.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.filter(embedding__isnull=False)
+    } == {text: ("failing", [float(len(text)), 1.0]) for text in embedded_texts}
