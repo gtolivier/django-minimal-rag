@@ -246,8 +246,12 @@ implements.
   answer, answer in the language of the question) and a prompt whose
   parts are delimited by tags: one `<document>` per document, in the order of
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
-  first, then the `<question>`. The prompt is not customizable, and
-  answers are not streamed, until a project needs it.
+  first, then the `<question>`. Titles, extracts and the question are
+  escaped (`&`, `<` and `>`, as `html.escape` does without quotes), so no
+  text can close its element; the system prompt says how they are
+  written, and to write them as they are in the answer, which the package
+  does not unescape. The prompt is not customizable, and answers are not streamed,
+  until a project needs it.
 - **Citations are built by the package, not by the LLM.** An `Answer`
   holds the LLM's `text` and its `citations`: one `Citation(title, url,
   source_key)` per document whose chunks were sent, in the order of its
@@ -313,11 +317,11 @@ Provisional: the design pass may reorder, split or merge them.
 - [ ] **9. Vectors reused across sources (optional, may be dropped).** A
   text already stored by the current model in another source of the same
   `replace()` call keeps that vector instead of being embedded again.
-- [ ] **10. Escaped prompt.** Titles, extracts and the question go into
-  their elements as they are, so a text holding `</extract>` or
-  `</question>` can close its element and make up another — a document
-  or a question the LLM is told to trust. `<`, `>` and `&` are escaped in
-  them; whether the system prompt says so is settled by the feature.
+- [x] **10. Escaped prompt.** `<`, `>` and `&` are escaped in titles,
+  extracts and the question, so a text holding `</extract>` or
+  `</question>` stays in its element instead of making up another — a
+  document or a question the LLM is told to trust. The system prompt says
+  how they are written, and to write them as they are in the answer.
 - [ ] **11. Deferred embedding.** `replace()` stores texts without
   vectors and commits; `embed_pending()` embeds the chunks still missing
   a vector, outside the source locks; retrieval ignores chunks without a

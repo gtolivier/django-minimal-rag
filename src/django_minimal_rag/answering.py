@@ -2,6 +2,7 @@
 
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from html import escape
 
 from django_minimal_rag.llm import get_llm
 from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
@@ -16,6 +17,8 @@ ANSWER_INSTRUCTIONS = (
     f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
     f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
+    "In the elements, < is written &lt;, > is written &gt; and & is written &amp;. "
+    "In the answer, write <, > and & as they are, not escaped. "
     "Answer in the language of the question."
 )
 
@@ -78,7 +81,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
             ),
-            _element(QUESTION_ELEMENT, question),
+            _text_element(QUESTION_ELEMENT, question),
         ]
     )
 
@@ -97,14 +100,24 @@ def _document(chunks: list[RetrievedChunk]) -> str:
     """Return the chunks of one document: its title, then its extracts."""
     return PROMPT_PART_SEPARATOR.join(
         [
-            f"<{DOCUMENT_ELEMENT}>",
-            _element(TITLE_ELEMENT, chunks[0].title),
-            *(_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
-            f"</{DOCUMENT_ELEMENT}>",
+            _opening_tag(DOCUMENT_ELEMENT),
+            _text_element(TITLE_ELEMENT, chunks[0].title),
+            *(_text_element(EXTRACT_ELEMENT, chunk.text) for chunk in chunks),
+            _closing_tag(DOCUMENT_ELEMENT),
         ]
     )
 
 
-def _element(name: str, content: str) -> str:
-    """Return ``content`` between the opening and closing tags of ``name``."""
-    return f"<{name}>{content}</{name}>"
+def _text_element(name: str, text: str) -> str:
+    """Return the element ``name`` holding ``text``, escaped so it cannot close it."""
+    return f"{_opening_tag(name)}{escape(text, quote=False)}{_closing_tag(name)}"
+
+
+def _opening_tag(name: str) -> str:
+    """Return the tag that opens the element ``name``."""
+    return f"<{name}>"
+
+
+def _closing_tag(name: str) -> str:
+    """Return the tag that closes the element ``name``."""
+    return f"</{name}>"
