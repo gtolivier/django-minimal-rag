@@ -77,6 +77,9 @@ def embed_pending(
         batch_size = DEFAULT_BATCH_SIZE
     if claim_timeout is None:
         claim_timeout = DEFAULT_CLAIM_TIMEOUT
+    if claim_timeout <= datetime.timedelta(0):
+        message = f"claim_timeout must be positive, got {claim_timeout!r}."
+        raise ValueError(message)
     embedded = 0
     embeddings: Embeddings | None = None  # built only if a chunk is pending
     while batch := _claim_pending_chunks(claim_timeout, batch_size):
