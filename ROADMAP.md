@@ -142,16 +142,21 @@ implements.
   permissions that have since been revoked. Removed chunks disappear at
   once, with the transaction that removes them. Two `embed_pending()`
   runs do not embed the same chunks: each claims a batch at a time by
-  stamping `Chunk.embedding_claimed_at` in one `UPDATE`, embeds it with no
-  transaction open, then writes the vectors by chunk id. A claim expires
-  after a timeout (10 minutes by default), so a crashed run's chunks are
-  taken back; a failure releases the claims of its batch. A lease column
-  was preferred over a separate queue table, and over row or advisory
-  locks held during the API call.
+  stamping `Chunk.embedding_claimed_at` in a short transaction
+  (`SELECT … FOR UPDATE SKIP LOCKED`, so it never waits for rows another
+  transaction holds), embeds it with no transaction open, then writes the
+  vectors by chunk id. A claim expires after a timeout (10 minutes by
+  default), so a crashed run's chunks are taken back; a failed batch keeps
+  its claim until then, so a batch that always fails cannot stop every
+  run at the same chunks. A partial index on the chunks without a vector
+  keeps the claim from scanning the whole table. A lease column was
+  preferred over a separate queue table, and over row or advisory locks
+  held during the API call.
 - **Synchronous by default, deferred by choice.** By default `replace()`
-  calls `embed_pending()` itself once its transaction is committed
+  embeds the chunks it stored once its transaction is committed
   (`transaction.on_commit`, so inside the caller's own transaction it
-  waits for that one): indexing needs no configuration, and its caller
+  waits for that one), leaving the backlog of other sources to
+  `embed_pending()`: indexing needs no configuration, and its caller
   sees embedding errors. `MINIMAL_RAG_DEFER_EMBEDDING = True` opts into
   deferral: `replace()` then only stores the texts,
   and the project schedules `embed_pending()` with whatever it already

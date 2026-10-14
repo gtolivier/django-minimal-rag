@@ -164,9 +164,10 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
   given twice in a group is stored twice, each time with its own chunks.
 - An empty group removes its source, with its documents and chunks; for a
   key that is not stored, it does nothing.
-- A chunk whose text is already stored in its source, embedded by the
-  current backend's model, keeps its vector: only new or changed texts,
-  and texts embedded by another model, are stored without one. A call
+- A chunk whose text is already stored, embedded by the current
+  backend's model, in one of the call's sources keeps that vector — even
+  when the text was stored in another of them: only new or changed
+  texts, and texts embedded by another model, are stored without one. A call
   with a non-empty group needs `MINIMAL_RAG_EMBEDDINGS`, to know the
   current model; a call whose groups are all empty builds no backend, so
   it works without it.
@@ -232,11 +233,15 @@ embed_pending()
 - A text shared by several pending chunks is sent once. At most
   `batch_size` texts (100 by default) go in one `embed()` call; a
   `batch_size` below 1 raises `ValueError`.
-- Each batch is claimed (`embedding_claimed_at`) by a single `UPDATE`,
-  then embedded with no transaction open and no row lock held, so
-  concurrent runs share the work instead of embedding the same chunks. A
-  claim older than `claim_timeout` (10 minutes by default) is taken back,
-  so the chunks of a run that crashed are embedded by a later one.
+- Each batch is claimed (`embedding_claimed_at`) in a short transaction
+  that skips the rows another transaction locks (`SELECT … FOR UPDATE
+  SKIP LOCKED`) instead of waiting for them, then embedded with no
+  transaction open and no row lock held, so concurrent runs share the
+  work instead of embedding the same chunks. A partial index on the
+  chunks without a vector keeps the claim from scanning the whole table.
+  A claim older than `claim_timeout` (10 minutes by default) is taken
+  back, so the chunks of a run that crashed are embedded by a later one;
+  a `claim_timeout` of zero or below raises `ValueError`.
 - If the backend raises, `embed_pending()` raises its error; the batches
   already embedded keep their vectors, and the failed batch stays claimed,
   so runs started before its claim times out skip it and embed the other
