@@ -1690,6 +1690,45 @@ def test_embed_pending_embeds_a_chunk_whose_claim_is_older_than_the_claim_timeou
 
 
 @pytest.mark.django_db
+def test_embed_pending_stores_no_vector_of_a_batch_another_run_took_back_meanwhile(
+    settings: "Settings",
+) -> None:
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    second_run_calls: list[list[str]] = []
+    second_run_counts: list[int] = []
+
+    def take_the_batch_back_with_another_model() -> None:
+        # As if the backend call had lasted twenty minutes: the first run's
+        # claim is now older than the claim timeout, so another run, with
+        # another backend, takes the batch back and embeds it.
+        Chunk.objects.update(
+            embedding_claimed_at=timezone.now() - datetime.timedelta(minutes=20)
+        )
+        recorded_calls = use_call_recording_embeddings(settings)
+        second_run_counts.append(
+            embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+        )
+        second_run_calls.extend(recorded_calls)
+
+    use_interleaving_embeddings(settings, take_the_batch_back_with_another_model)
+
+    first_run_count = embed_pending(claim_timeout=datetime.timedelta(minutes=10))
+
+    assert second_run_counts == [2]
+    [second_run_call] = second_run_calls
+    # The first run's vectors would replace the second run's: it stores none,
+    # and counts none. RecordingEmbeddings gives each text its position.
+    assert first_run_count == 0
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(second_run_call)
+    }
+
+
+@pytest.mark.django_db
 def test_embed_pending_without_a_claim_timeout_takes_back_claims_older_than_10_minutes(
     settings: "Settings",
 ) -> None:
