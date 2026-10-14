@@ -154,7 +154,8 @@ def _check_claim_timeout(claim_timeout: datetime.timedelta | None) -> None:
 def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> int:
     """Give ``chunks`` the vectors of ``embeddings``, in one call, and save them.
 
-    Return how many of them were still stored.
+    Only the chunks still stored and still under this run's claim are saved.
+    Return how many of them were saved.
     """
     vectors = _embed_distinct((chunk.text for chunk in chunks), embeddings)
     for chunk in chunks:
