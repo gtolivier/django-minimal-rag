@@ -1097,3 +1097,28 @@ def test_embed_pending_embeds_a_shared_text_once_and_gives_each_chunk_its_vector
         chunk.document.source.source_key: (chunk.embedding_model, list(chunk.embedding))
         for chunk in Chunk.objects.select_related("document__source")
     } == {"faq:1": ("recording", [0.0, 1.0]), "faq:2": ("recording", [0.0, 1.0])}
+
+
+@pytest.mark.django_db
+def test_embed_pending_with_a_batch_size_embeds_the_chunks_in_calls_of_that_size(
+    settings: "Settings",
+) -> None:
+    calls = use_call_recording_embeddings(settings)
+    texts = [f"Answer to question {number}." for number in range(1, 6)]
+    store_pending_chunks("faq:1", texts)
+
+    embedded_count = embed_pending(batch_size=2)
+
+    assert embedded_count == 5
+    assert len(calls) == 3
+    assert all(len(call) <= 2 for call in calls)
+    embedded_texts = [text for call in calls for text in call]
+    assert sorted(embedded_texts) == sorted(texts)
+    # RecordingEmbeddings gives each text its position among all texts embedded.
+    assert {
+        chunk.text: (chunk.embedding_model, list(chunk.embedding))
+        for chunk in Chunk.objects.all()
+    } == {
+        text: ("recording", [float(position), 1.0])
+        for position, text in enumerate(embedded_texts)
+    }
