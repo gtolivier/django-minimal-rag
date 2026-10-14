@@ -52,17 +52,23 @@ class Indexer:
             _store_all_chunks(plans, embeddings)
 
 
-def embed_pending() -> int:
-    """Embed the chunks still waiting for a vector; return how many were."""
+def embed_pending(batch_size: int | None = None) -> int:
+    """Embed the chunks still waiting for a vector; return how many were.
+
+    With ``batch_size``, embed them in calls of at most that many chunks.
+    """
     pending = list(Chunk.objects.filter(embedding__isnull=True))
     if not pending:
         return 0
     embeddings = get_embeddings()
-    vectors = _embed_distinct((chunk.text for chunk in pending), embeddings)
-    for chunk in pending:
-        chunk.embedding = vectors[chunk.text]
-        chunk.embedding_model = embeddings.model
-    Chunk.objects.bulk_update(pending, ["embedding", "embedding_model"])
+    step = batch_size or len(pending)
+    for start in range(0, len(pending), step):
+        batch = pending[start : start + step]
+        vectors = _embed_distinct((chunk.text for chunk in batch), embeddings)
+        for chunk in batch:
+            chunk.embedding = vectors[chunk.text]
+            chunk.embedding_model = embeddings.model
+        Chunk.objects.bulk_update(batch, ["embedding", "embedding_model"])
     return len(pending)
 
 
