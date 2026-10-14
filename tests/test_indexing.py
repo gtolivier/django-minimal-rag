@@ -1456,6 +1456,28 @@ def test_embed_pending_gives_no_vector_to_a_chunk_deleted_during_its_backend_cal
 
 
 @pytest.mark.django_db
+def test_embed_pending_does_not_count_a_chunk_deleted_during_its_backend_call(
+    settings: "Settings",
+) -> None:
+    store_pending_chunks("faq:1", ["Answer to question 1.", "More on question 1."])
+    store_pending_chunks("faq:2", ["Answer to question 2."])
+
+    def remove_faq_2() -> None:
+        # The source is removed while its chunk is being embedded.
+        Source.objects.filter(source_key="faq:2").delete()
+
+    settings.MINIMAL_RAG_EMBEDDINGS = {
+        "BACKEND": "tests.embeddings.InterleavingEmbeddings",
+        "OPTIONS": {"during_embed": remove_faq_2},
+    }
+
+    embedded_count = embed_pending()
+
+    # Only the chunks still stored got a vector: the deleted one is not counted.
+    assert embedded_count == 2
+
+
+@pytest.mark.django_db
 def test_embed_pending_run_during_another_runs_backend_call_skips_its_claimed_chunks(
     settings: "Settings",
 ) -> None:
