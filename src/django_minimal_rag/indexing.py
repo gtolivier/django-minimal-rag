@@ -18,6 +18,7 @@ from django_minimal_rag.embeddings import Embeddings, get_embeddings
 from django_minimal_rag.models import Chunk, Document, Source
 
 MODEL_LABEL_SEPARATOR = ":"
+DEFAULT_CLAIM_TIMEOUT = datetime.timedelta(minutes=10)
 """What ends the model label at the start of a source key."""
 DEFAULT_BATCH_SIZE = 100
 """Most chunks per embedding call when no batch size is given."""
@@ -67,7 +68,8 @@ def embed_pending(
 
     Embed them in calls of at most ``batch_size`` chunks
     (``DEFAULT_BATCH_SIZE`` by default).
-    With ``claim_timeout``, skip the chunks claimed more recently than that.
+    Skip the chunks claimed more recently than ``claim_timeout``
+    (``DEFAULT_CLAIM_TIMEOUT`` by default).
     """
     _check_batch_size(batch_size)
     pending = _claim_pending_chunks(claim_timeout)
@@ -105,11 +107,11 @@ def _pending_chunks(claim_timeout: datetime.timedelta | None) -> QuerySet[Chunk]
     """Return the chunks waiting for a vector, without those claimed recently.
 
     A chunk is claimed recently when it was claimed less than ``claim_timeout``
-    ago; without ``claim_timeout``, a claimed chunk is always left out.
+    ago; ``claim_timeout`` defaults to ``DEFAULT_CLAIM_TIMEOUT``.
     """
     waiting = Chunk.objects.filter(embedding__isnull=True)
     if claim_timeout is None:
-        return waiting.filter(embedding_claimed_at__isnull=True)
+        claim_timeout = DEFAULT_CLAIM_TIMEOUT
     return waiting.filter(
         Q(embedding_claimed_at__isnull=True)
         | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
