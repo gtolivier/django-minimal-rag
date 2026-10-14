@@ -59,7 +59,7 @@ class Indexer:
                 embeddings = get_embeddings()
             plans.append(_prepare_source(source_key, documents, embeddings))
         if embeddings is not None:
-            _store_all_chunks(plans, embeddings)
+            _store_all_chunks(plans, embeddings.model)
 
 
 def embed_pending(
@@ -299,7 +299,7 @@ def _split_documents(
     ]
 
 
-def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
+def _store_all_chunks(plans: Sequence[_Plan], embedding_model: str) -> None:
     """Store the chunks of all ``plans``, each source's pieces ranked in order.
 
     A text without a stored vector is stored without one. Unless the
@@ -307,7 +307,7 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
     transaction commits, as are the other pending chunks of ``plans``' documents
     — never those of another source.
     """
-    _store_chunks_without_embedding(plans, embeddings)
+    _store_chunks_without_embedding(plans, embedding_model)
     if not _is_embedding_deferred():
         document_ids = {
             stored_document.pk for plan in plans for stored_document, _ in plan.pieces
@@ -329,12 +329,13 @@ def _is_embedding_deferred() -> bool:
 
 
 def _store_chunks_without_embedding(
-    plans: Sequence[_Plan], embeddings: Embeddings
+    plans: Sequence[_Plan], embedding_model: str
 ) -> None:
     """Store the pieces of ``plans`` as chunks, without embedding any text.
 
     Each source's pieces are ranked in order. A text with a vector stored in one
-    of ``plans`` keeps it; any other text is stored without a vector.
+    of ``plans`` keeps it, as a vector of ``embedding_model``; any other text is
+    stored without a vector.
     """
     ranked_pieces = (
         (rank, stored_document, text)
@@ -349,7 +350,7 @@ def _store_chunks_without_embedding(
             document=stored_document,
             rank=rank,
             text=text,
-            embedding_model=embeddings.model,
+            embedding_model=embedding_model,
             embedding=stored_vectors[text],
         )
         if text in stored_vectors

@@ -174,9 +174,9 @@ Indexer().replace({"faq:1": [entry], "guide:3": [part_1, part_2]})
   replaced or removed source is locked (`SELECT … FOR UPDATE`) before
   anything of it changes, until the transaction ends, so two calls on the
   same source run one after the other instead of interleaving their
-  documents; no lock is held while the backend embeds. The rows are locked in sorted `source_key` order, so two
-  calls sharing several sources do not deadlock, whatever the order of
-  their `groups`.
+  documents; no lock is held while the backend embeds. The rows are
+  locked in sorted `source_key` order, so two calls sharing several
+  sources do not deadlock, whatever the order of their `groups`.
 - `ValueError` is raised, and nothing of the call is stored, when a
   document's `source_key` differs from the key of its group (the message
   names both keys).
@@ -216,12 +216,14 @@ embedded:
 embed_pending()
 ```
 
-- By default, `replace()` runs `embed_pending()` once its transaction
-  commits (`transaction.on_commit`): called inside the project's own
-  transaction, it embeds when that transaction commits. If the backend
-  raises, `replace()` raises its error, but its texts are already stored:
-  they stay without a vector until a later `embed_pending()` — for the
-  failed batch, one run after its claim times out (see below).
+- By default, `replace()` runs `embed_pending()` on the chunks of the
+  documents it stored — never on those of another source — once its
+  transaction commits (`transaction.on_commit`): called inside the
+  project's own transaction, it embeds when that transaction commits. If
+  the backend raises, `replace()` raises its error, but its texts are
+  already stored: they stay without a vector until a later
+  `embed_pending()` — for the failed batch, one run after its claim times
+  out (see below).
 - With `MINIMAL_RAG_DEFER_EMBEDDING = True`, `replace()` never calls the
   backend: the project runs `embed_pending()` itself — from a task queue,
   a cron job or a management command. Any other value than a bool raises
@@ -231,10 +233,10 @@ embed_pending()
   `batch_size` texts (100 by default) go in one `embed()` call; a
   `batch_size` below 1 raises `ValueError`.
 - Each batch is claimed (`embedding_claimed_at`) by a single `UPDATE`,
-  then embedded with no transaction open and no row lock held, so concurrent runs share the work instead of embedding the same
-  chunks. A claim older than `claim_timeout` (10 minutes by default) is
-  taken back, so the chunks of a run that crashed are embedded by a later
-  one.
+  then embedded with no transaction open and no row lock held, so
+  concurrent runs share the work instead of embedding the same chunks. A
+  claim older than `claim_timeout` (10 minutes by default) is taken back,
+  so the chunks of a run that crashed are embedded by a later one.
 - If the backend raises, `embed_pending()` raises its error; the batches
   already embedded keep their vectors, and the failed batch stays claimed,
   so runs started before its claim times out skip it and embed the other
