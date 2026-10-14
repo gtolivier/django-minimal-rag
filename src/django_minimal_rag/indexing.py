@@ -72,6 +72,15 @@ def embed_pending(
     Skip the chunks claimed more recently than ``claim_timeout``
     (``DEFAULT_CLAIM_TIMEOUT`` by default).
     """
+    return _embed_pending(batch_size, claim_timeout, None)
+
+
+def _embed_pending(
+    batch_size: int | None,
+    claim_timeout: datetime.timedelta | None,
+    document_ids: AbstractSet[int] | None,
+) -> int:
+    """Run embed_pending(), only on the chunks of ``document_ids`` if given."""
     _check_batch_size(batch_size)
     _check_claim_timeout(claim_timeout)
     if batch_size is None:
@@ -80,26 +89,28 @@ def embed_pending(
         claim_timeout = DEFAULT_CLAIM_TIMEOUT
     embedded = 0
     embeddings: Embeddings | None = None  # built only if a chunk is pending
-    while batch := _claim_pending_chunks(claim_timeout, batch_size):
+    while batch := _claim_pending_chunks(claim_timeout, batch_size, document_ids):
         if embeddings is None:
             embeddings = get_embeddings()
         embedded += _embed_chunks(batch, embeddings)
     return embedded
 
 
-def _claim_pending_chunks(claim_timeout: datetime.timedelta, limit: int) -> list[Chunk]:
-    """Claim at most ``limit`` chunks of ``_pending_chunks(claim_timeout)``."""
+def _claim_pending_chunks(
+    claim_timeout: datetime.timedelta, limit: int, document_ids: AbstractSet[int] | None
+) -> list[Chunk]:
+    """Claim at most ``limit`` chunks of ``_pending_chunks(...)``."""
     claimed_at = timezone.now()
     with transaction.atomic():
         # Rows another transaction locks are skipped, never waited for.
         ids = list(
-            _pending_chunks(claim_timeout)
+            _pending_chunks(claim_timeout, document_ids)
             .select_for_update(skip_locked=True)
             .order_by("pk")
             .values_list("pk", flat=True)[:limit]
         )
         # One UPDATE takes the chunks, so that no other run takes them too.
-        _pending_chunks(claim_timeout).filter(pk__in=ids).update(
+        _pending_chunks(claim_timeout, document_ids).filter(pk__in=ids).update(
             embedding_claimed_at=claimed_at
         )
     return list(
@@ -109,16 +120,21 @@ def _claim_pending_chunks(claim_timeout: datetime.timedelta, limit: int) -> list
     )
 
 
-def _pending_chunks(claim_timeout: datetime.timedelta) -> QuerySet[Chunk]:
+def _pending_chunks(
+    claim_timeout: datetime.timedelta, document_ids: AbstractSet[int] | None
+) -> QuerySet[Chunk]:
     """Return the chunks waiting for a vector, without those claimed recently.
 
     A chunk is claimed recently when it was claimed less than ``claim_timeout``
-    ago.
+    ago. Only the chunks of ``document_ids`` are returned if it is given.
     """
-    return Chunk.objects.filter(embedding__isnull=True).filter(
+    chunks = Chunk.objects.filter(embedding__isnull=True).filter(
         Q(embedding_claimed_at__isnull=True)
         | Q(embedding_claimed_at__lte=timezone.now() - claim_timeout)
     )
+    if document_ids is not None:
+        chunks = chunks.filter(document_id__in=document_ids)
+    return chunks
 
 
 def _check_batch_size(batch_size: int | None) -> None:
@@ -292,7 +308,10 @@ def _store_all_chunks(plans: Sequence[_Plan], embeddings: Embeddings) -> None:
     """
     _store_chunks_without_embedding(plans, embeddings)
     if not _is_embedding_deferred():
-        transaction.on_commit(embed_pending)
+        document_ids = {
+            stored_document.pk for plan in plans for stored_document, _ in plan.pieces
+        }
+        transaction.on_commit(lambda: _embed_pending(None, None, document_ids))
 
 
 def _is_embedding_deferred() -> bool:
