@@ -57,8 +57,7 @@ def embed_pending(batch_size: int | None = None) -> int:
 
     With ``batch_size``, embed them in calls of at most that many chunks.
     """
-    if batch_size is not None and batch_size < 1:
-        raise ValueError(f"batch_size must be at least 1, got {batch_size}")
+    _check_batch_size(batch_size)
     pending = list(Chunk.objects.filter(embedding__isnull=True))
     if not pending:
         return 0
@@ -67,6 +66,13 @@ def embed_pending(batch_size: int | None = None) -> int:
     for start in range(0, len(pending), chunks_per_call):
         _embed_chunks(pending[start : start + chunks_per_call], embeddings)
     return len(pending)
+
+
+def _check_batch_size(batch_size: int | None) -> None:
+    """Raise ``ValueError`` if ``batch_size`` is given and below 1."""
+    if batch_size is not None and batch_size < 1:
+        message = f"batch_size must be at least 1, got {batch_size}"
+        raise ValueError(message)
 
 
 def _embed_chunks(chunks: Sequence[Chunk], embeddings: Embeddings) -> None:
