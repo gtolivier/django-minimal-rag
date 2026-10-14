@@ -18,6 +18,7 @@ ANSWER_INSTRUCTIONS = (
     f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
     "In the elements, < is written &lt;, > is written &gt; and & is written &amp;. "
+    "In the answer, write <, > and & as they are, not escaped. "
     "Answer in the language of the question."
 )
 
