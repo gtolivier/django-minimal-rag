@@ -73,13 +73,11 @@ def embed_pending(
     (``DEFAULT_CLAIM_TIMEOUT`` by default).
     """
     _check_batch_size(batch_size)
+    _check_claim_timeout(claim_timeout)
     if batch_size is None:
         batch_size = DEFAULT_BATCH_SIZE
     if claim_timeout is None:
         claim_timeout = DEFAULT_CLAIM_TIMEOUT
-    if claim_timeout <= datetime.timedelta(0):
-        message = f"claim_timeout must be positive, got {claim_timeout!r}."
-        raise ValueError(message)
     embedded = 0
     embeddings: Embeddings | None = None  # built only if a chunk is pending
     while batch := _claim_pending_chunks(claim_timeout, batch_size):
@@ -135,6 +133,13 @@ def _check_batch_size(batch_size: int | None) -> None:
     """Raise ``ValueError`` if ``batch_size`` is given and below 1."""
     if batch_size is not None and batch_size < 1:
         message = f"batch_size must be at least 1, got {batch_size}"
+        raise ValueError(message)
+
+
+def _check_claim_timeout(claim_timeout: datetime.timedelta | None) -> None:
+    """Raise ``ValueError`` if ``claim_timeout`` is given and not positive."""
+    if claim_timeout is not None and claim_timeout <= datetime.timedelta(0):
+        message = f"claim_timeout must be positive, got {claim_timeout!r}"
         raise ValueError(message)
 
 
