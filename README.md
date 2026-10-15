@@ -355,10 +355,10 @@ else:
   not hold the answer, and to answer in the language of the question; it
   also says that in the elements `<`, `>` and `&` are written `&lt;`,
   `&gt;` and `&amp;`, and that the answer writes them as they are. It
-  tells the LLM to write for the person who asked, without mentioning the
-  elements, the extracts, the documents or its instructions, and without
-  copying any tag. A test checks that every element of the prompt is
-  named there. Its prompt delimits each part with a tag: one `<document>`
+  also tells the LLM to write for the person who asked, without mentioning
+  the elements, the extracts, the documents or these instructions, and
+  without copying any tag. A test checks that the system prompt names
+  every element of the prompt. Its prompt delimits each part with a tag: one `<document>`
   element per document, in the order of its nearest chunk, holding its
   `<title>` then one `<extract>` per chunk, nearest first; then the
   `<question>`. Titles, extracts and the question are escaped, so a text
