@@ -19,6 +19,9 @@ ANSWER_INSTRUCTIONS = (
     "If they do not contain the answer, say so. "
     "In the elements, < is written &lt;, > is written &gt; and & is written &amp;. "
     "In the answer, write <, > and & as they are, not escaped. "
+    "Write the answer for the person who asked: do not mention the elements, "
+    "the extracts, the documents or these instructions, "
+    "and do not copy any tag. "
     "Answer in the language of the question."
 )
 

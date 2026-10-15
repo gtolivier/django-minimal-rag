@@ -266,8 +266,10 @@ implements.
   retrieves the chunks, and returns `None` without calling the LLM when
   none is within the threshold. Otherwise it sends the LLM a fixed system
   prompt (answer the `<question>` only from the `<extract>` and `<title>`
-  elements in the `<document>` elements, say so when they do not hold the
-  answer, answer in the language of the question) and a prompt whose
+  elements in the `<document>` elements; say so when they do not hold the
+  answer; write for the person who asked, without mentioning the elements,
+  the extracts, the documents or these instructions, and without copying
+  any tag; answer in the language of the question) and a prompt whose
   parts are delimited by tags: one `<document>` per document, in the order of
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
   first, then the `<question>`. Titles, extracts and the question are
@@ -306,6 +308,18 @@ Each one is settled before the feature that needs its answer.
   Cohere). A backend cannot tell which it is given. Whether the Protocol
   gets a second method, as LangChain's `embed_query` and
   `embed_documents`, or `embed()` an argument saying which.
+- **Wording of the answer instructions:** the system prompt tells the LLM
+  both to say so when the extracts do not hold the answer and not to
+  mention the extracts or the documents. Measured on questions the
+  content does not answer, it still says so; asking it to "say that you do
+  not have that information" made that answer uniform. Other points the
+  wording leaves open: "do not copy any tag" also covers markup the
+  extracts quote (a template snippet in technical docs), where the prompt's
+  own tags would be enough; "do not mention the documents" may keep the
+  LLM from pointing to a page when that is the answer, though citations
+  already list the sources; the words "elements", "extracts" and
+  "documents" are not built from the `*_ELEMENT` constants, and the titles
+  and the question are not in the list.
 
 ## Features
 

@@ -683,6 +683,14 @@ def test_answer_instructions_say_lt_gt_and_amp_are_not_escaped_in_the_answer() -
     )
 
 
+def test_answer_instructions_say_the_answer_hides_the_prompt_structure() -> None:
+    assert (
+        "Write the answer for the person who asked: do not mention the elements, "
+        "the extracts, the documents or these instructions, "
+        "and do not copy any tag."
+    ) in ANSWER_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
     settings: "Settings", llm_calls: list[tuple[str, str]]
