@@ -267,7 +267,9 @@ implements.
   none is within the threshold. Otherwise it sends the LLM a fixed system
   prompt (answer the `<question>` only from the `<extract>` and `<title>`
   elements in the `<document>` elements, say so when they do not hold the
-  answer, answer in the language of the question) and a prompt whose
+  answer, write for the person who asked without mentioning the elements,
+  the extracts, the documents or the instructions nor copying a tag,
+  answer in the language of the question) and a prompt whose
   parts are delimited by tags: one `<document>` per document, in the order of
   its nearest chunk, with its `<title>` and its `<extract>`s nearest
   first, then the `<question>`. Titles, extracts and the question are
