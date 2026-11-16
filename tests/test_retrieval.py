@@ -437,6 +437,24 @@ def test_retrieve_in_a_language_keeps_a_chunk_of_a_document_of_unknown_language(
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_language_keeps_a_chunk_of_a_document_of_empty_language(
+    settings: "Settings",
+) -> None:
+    # An empty language is a language left blank: unknown, like None.
+    chunk_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    empty_language_page = replace(public_page(chunk_text), language="")
+    replace_and_run_on_commit({"page:1": [empty_language_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_in_a_language_compares_languages_without_regard_to_case(
     settings: "Settings",
 ) -> None:
