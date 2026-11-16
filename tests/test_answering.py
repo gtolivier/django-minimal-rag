@@ -717,6 +717,28 @@ def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
 
 
 @pytest.mark.django_db
+def test_answer_in_a_language_never_gives_the_llm_a_chunk_in_another_language(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    english_text = "The shop opens at nine."
+    french_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    # Cosine distances to the question: English 0.0, French 0.2.
+    use_chosen_embeddings(
+        settings,
+        {english_text: [1.0, 0.0], french_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    french_page = replace(public_page(french_text), language="fr")
+    replace_and_run_on_commit({"page:1": [public_page(english_text), french_page]})
+
+    answer(question, permissions=frozenset(), max_distance=1.0, language="fr")
+
+    [(prompt, _system)] = llm_calls
+    assert french_text in prompt
+    assert english_text not in prompt
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("title", "url", "source_key"),
     [
