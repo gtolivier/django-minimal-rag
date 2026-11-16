@@ -420,6 +420,23 @@ def test_retrieve_in_a_language_leaves_out_a_nearer_chunk_in_another_language(
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_language_keeps_a_chunk_of_a_document_of_unknown_language(
+    settings: "Settings",
+) -> None:
+    chunk_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    unknown_language_page = replace(public_page(chunk_text), language=None)
+    replace_and_run_on_commit({"page:1": [unknown_language_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
