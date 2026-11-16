@@ -387,7 +387,7 @@ Provisional: the design pass may reorder, split or merge them.
 - [x] **12. Language filter.** `retrieve()` and `answer()` take an
   optional `language` range, matched as RFC 4647 basic filtering does,
   in the vector query; documents of unknown language are kept, and a
-  malformed range raises `ValueError` (see
+  range that is blank, holds whitespace or is `*` raises `ValueError` (see
   "Decisions").
 
 ## Not planned here
