@@ -97,6 +97,7 @@ def _candidate_chunks(
         Q(document__language__iexact=language)
         | Q(document__language__istartswith=f"{language}{_SUBTAG_SEPARATOR}")
         | Q(document__language__isnull=True)
+        | Q(document__language="")
     )
 
 
