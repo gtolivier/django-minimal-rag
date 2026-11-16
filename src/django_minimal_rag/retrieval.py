@@ -15,6 +15,8 @@ MIN_LIMIT = 1
 _WILDCARD = "*"
 # Separates the subtags of a language tag (BCP 47), as in "fr-CA".
 _SUBTAG_SEPARATOR = "-"
+# A language left blank is as unknown as one left out.
+_OF_UNKNOWN_LANGUAGE = Q(document__language__isnull=True) | Q(document__language="")
 
 
 @dataclass(frozen=True)
@@ -96,8 +98,7 @@ def _candidate_chunks(
     return chunks.filter(
         Q(document__language__iexact=language)
         | Q(document__language__istartswith=f"{language}{_SUBTAG_SEPARATOR}")
-        | Q(document__language__isnull=True)
-        | Q(document__language="")
+        | _OF_UNKNOWN_LANGUAGE
     )
 
 
