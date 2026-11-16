@@ -41,6 +41,7 @@ class Answer:
 
     text: str
     citations: tuple[Citation, ...]
+    chunks: tuple[RetrievedChunk, ...]
 
 
 def answer(
@@ -63,6 +64,7 @@ def answer(
     return Answer(
         text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
         citations=_cite(chunks),
+        chunks=tuple(chunks),
     )
 
 
