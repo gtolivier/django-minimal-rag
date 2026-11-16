@@ -527,6 +527,28 @@ def test_retrieve_in_a_regional_language_leaves_out_other_regions_and_bare_langu
 
 
 @pytest.mark.django_db
+def test_retrieve_without_a_language_returns_chunks_of_documents_in_several_languages(
+    settings: "Settings",
+) -> None:
+    french_text = "La boutique ouvre à neuf heures."
+    english_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    use_chosen_embeddings(
+        settings,
+        {french_text: [1.0, 0.0], english_text: [1.0, 0.0], question: [1.0, 0.0]},
+    )
+    french_page = replace(public_page(french_text), language="fr")
+    english_page = replace(public_page(english_text), language="en")
+    replace_and_run_on_commit({"page:1": [french_page, english_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language=None
+    )
+
+    assert {chunk.text for chunk in retrieved} == {french_text, english_text}
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
