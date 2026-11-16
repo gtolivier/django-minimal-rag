@@ -831,3 +831,19 @@ def test_answer_holds_the_chunk_retrieved_for_its_question(
             distance=1.0,
         ),
     )
+
+
+@pytest.mark.django_db
+def test_answer_holds_only_the_limit_nearest_chunks_nearest_first(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    # All three within max_distance.
+    nearest, middle, _farthest = index_three_chunks_near(settings, question)
+    use_canned_llm(settings, "The shop opens at nine, at ten on Saturdays.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.5, limit=2)
+
+    assert answered is not None
+    assert all(isinstance(chunk, RetrievedChunk) for chunk in answered.chunks)
+    assert [chunk.text for chunk in answered.chunks] == [nearest, middle]
