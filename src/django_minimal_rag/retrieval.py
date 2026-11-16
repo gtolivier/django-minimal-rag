@@ -50,11 +50,14 @@ def retrieve(
     Chunks at the same distance are ordered by their document's id, then
     by their rank in it.
 
-    Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if the
-    backend does not return exactly one vector for the question, or if that
-    vector is all zeros.
+    Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if ``language``
+    is blank, if the backend does not return exactly one vector for the
+    question, or if that vector is all zeros.
     """
     _require_positive_limit(limit)
+    if language is not None and not language.strip():
+        msg = "language must not be blank"
+        raise ValueError(msg)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
     chunks = _candidate_chunks(embeddings.model, permissions, language)
