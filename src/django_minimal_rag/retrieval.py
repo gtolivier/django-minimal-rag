@@ -120,9 +120,12 @@ def _require_positive_limit(limit: int) -> None:
 
 
 def _require_non_blank_language(language: str | None) -> None:
-    """Raise ``ValueError`` if ``language`` is given but blank."""
+    """Raise ``ValueError`` if ``language`` is blank or holds whitespace."""
     if language is not None and not language.strip():
         msg = "language must not be blank"
+        raise ValueError(msg)
+    if language is not None and any(char.isspace() for char in language):
+        msg = "language must not contain whitespace"
         raise ValueError(msg)
 
 
