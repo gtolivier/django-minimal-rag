@@ -392,6 +392,34 @@ def test_retrieve_returns_a_chunk_only_to_a_reader_holding_all_its_permissions(
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_language_leaves_out_a_nearer_chunk_in_another_language(
+    settings: "Settings",
+) -> None:
+    english_text = "The shop opens at nine."
+    french_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    # Cosine distances to the question: English 0.0, French 0.2. With a limit
+    # of 1, the French chunk is only returned if the English one is left out
+    # by the query itself, before the limit applies.
+    use_chosen_embeddings(
+        settings,
+        {english_text: [1.0, 0.0], french_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    french_page = replace(public_page(french_text), language="fr")
+    replace_and_run_on_commit({"page:1": [public_page(english_text), french_page]})
+
+    retrieved = retrieve(
+        question,
+        permissions=frozenset(),
+        max_distance=1.0,
+        limit=1,
+        language="fr",
+    )
+
+    assert [chunk.text for chunk in retrieved] == [french_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
