@@ -3,7 +3,7 @@
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from django.db.models import Case, F, When
+from django.db.models import Case, F, QuerySet, When
 from pgvector.django import CosineDistance
 
 from django_minimal_rag.embeddings import Embeddings, get_embeddings
@@ -42,7 +42,9 @@ def retrieve(
     relevance threshold: a chunk whose cosine distance to the question is
     above it is left out. ``permissions`` are the names of the permissions
     the reader holds: a chunk is returned only if the reader holds every
-    permission its document requires. Chunks at the same distance are
+    permission its document requires. If ``language`` is given, only chunks
+    of documents in that language are compared; documents of unknown
+    language are then left out. Chunks at the same distance are
     ordered by their document's id, then by their rank in it.
 
     Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if the
@@ -52,12 +54,7 @@ def retrieve(
     _require_positive_limit(limit)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
-    chunks = Chunk.objects.filter(
-        embedding_model=embeddings.model,
-        document__permissions__contained_by=list(permissions),
-    )
-    if language is not None:
-        chunks = chunks.filter(document__language=language)
+    chunks = _candidate_chunks(embeddings.model, permissions, language)
     rows = (
         chunks.annotate(distance=_distance_to(question_embedding, embeddings.model))
         .order_by("distance", "document_id", "rank")
@@ -73,6 +70,19 @@ def retrieve(
     # on the distance would compute it a second time per row. Rows come
     # nearest first, so those within the threshold are the same either way.
     return [RetrievedChunk(**row) for row in rows if row["distance"] <= max_distance]
+
+
+def _candidate_chunks(
+    model: str, permissions: AbstractSet[str], language: str | None
+) -> QuerySet[Chunk]:
+    """The chunks of ``model`` the reader may see, only in ``language`` if given."""
+    chunks = Chunk.objects.filter(
+        embedding_model=model,
+        document__permissions__contained_by=list(permissions),
+    )
+    if language is None:
+        return chunks
+    return chunks.filter(document__language=language)
 
 
 def _distance_to(question_embedding: list[float], model: str) -> Case:
