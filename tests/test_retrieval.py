@@ -520,6 +520,18 @@ def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("blank_language", ["", "  \t"])
+def test_retrieve_with_a_blank_language_raises_value_error(blank_language: str) -> None:
+    with pytest.raises(ValueError, match="language"):
+        retrieve(
+            "What are the opening hours?",
+            permissions=frozenset(),
+            max_distance=1.0,
+            language=blank_language,
+        )
+
+
+@pytest.mark.django_db
 def test_retrieve_raises_value_error_when_the_backend_gives_the_question_two_vectors(
     settings: "Settings",
 ) -> None:
