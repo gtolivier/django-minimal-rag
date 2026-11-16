@@ -739,6 +739,24 @@ def test_answer_in_a_language_never_gives_the_llm_a_chunk_in_another_language(
 
 
 @pytest.mark.django_db
+def test_answer_in_a_language_with_only_chunks_in_another_returns_none_without_llm(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    english_text = "The shop opens at nine."
+    question = "À quelle heure ouvre la boutique ?"
+    # Cosine distance of the English chunk to the question: 0.0.
+    use_chosen_embeddings(settings, {english_text: [1.0, 0.0], question: [1.0, 0.0]})
+    replace_and_run_on_commit({"page:1": [public_page(english_text)]})
+
+    answered = answer(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert answered is None
+    assert llm_calls == []
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("title", "url", "source_key"),
     [
