@@ -344,7 +344,7 @@ else:
     for citation in result.citations:
         citation.title, citation.url, citation.source_key
     for chunk in result.chunks:
-        chunk.text, chunk.title, chunk.url, chunk.distance
+        chunk.text, chunk.title, chunk.url, chunk.source_key, chunk.distance
 ```
 
 - The LLM backend is resolved first: without a valid `MINIMAL_RAG_LLM`,
@@ -374,9 +374,11 @@ else:
   chunks, not from what the LLM wrote: one per document, in the order of
   its nearest chunk. Documents of the same source with a different title
   or URL — translations, say — are cited separately. A document indexed
-  without a URL is cited with `url=""`: show its title alone. Its
-  `chunks` are the `RetrievedChunk`s the LLM was given, nearest first, as a
-  tuple: a project can show the extracts an answer comes from.
+  without a URL is cited with `url=""`: show its title alone.
+- The `Answer`'s `chunks` are the `RetrievedChunk`s the LLM was given, as a
+  tuple in the order `retrieve()` returned them, nearest first — the
+  prompt groups them by document instead: a project can show the extracts
+  an answer comes from.
 - Exceptions from the LLM backend propagate, as do those of `retrieve()`.
   Answers are not streamed.
 
