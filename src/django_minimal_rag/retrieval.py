@@ -87,7 +87,9 @@ def _candidate_chunks(
     if language is None:
         return chunks
     return chunks.filter(
-        Q(document__language__iexact=language) | Q(document__language__isnull=True)
+        Q(document__language__iexact=language)
+        | Q(document__language__istartswith=f"{language}-")
+        | Q(document__language__isnull=True)
     )
 
 
