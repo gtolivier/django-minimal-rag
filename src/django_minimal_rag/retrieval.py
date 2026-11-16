@@ -55,9 +55,7 @@ def retrieve(
     question, or if that vector is all zeros.
     """
     _require_positive_limit(limit)
-    if language is not None and not language.strip():
-        msg = "language must not be blank"
-        raise ValueError(msg)
+    _require_non_blank_language(language)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
     chunks = _candidate_chunks(embeddings.model, permissions, language)
@@ -118,6 +116,13 @@ def _require_positive_limit(limit: int) -> None:
     """Raise ``ValueError`` if ``limit`` is below ``MIN_LIMIT``."""
     if limit < MIN_LIMIT:
         msg = f"limit must be at least {MIN_LIMIT}, got {limit}"
+        raise ValueError(msg)
+
+
+def _require_non_blank_language(language: str | None) -> None:
+    """Raise ``ValueError`` if ``language`` is given but blank."""
+    if language is not None and not language.strip():
+        msg = "language must not be blank"
         raise ValueError(msg)
 
 
