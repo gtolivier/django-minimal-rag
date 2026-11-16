@@ -68,7 +68,8 @@ The app's models hold what gets indexed:
   `source_key` (at most 500 characters: PostgreSQL cannot index much
   longer unique values);
 - `Document` — a document of a source: its `title`, `url` and `language`
-  (unbounded text, the language tag stored as given, `None` when unknown)
+  (unbounded text, the BCP 47 language tag stored as given, `None` or
+  `""` when unknown)
   and `permissions` (a list of permission names, empty by default);
 - `Chunk` — a chunk of a document: its `rank`, `text`, the name of the
   `embedding_model` that produced its `embedding`, and that embedding. A
@@ -259,7 +260,7 @@ embed_pending()
 ## Retrieval
 
 `django_minimal_rag.retrieval.retrieve(question, *, permissions,
-max_distance, limit=5)` returns the indexed chunks nearest to a question
+max_distance, limit=5, language=None)` returns the indexed chunks nearest to a question
 that the reader may read:
 
 ```python
@@ -290,10 +291,23 @@ chunks = retrieve(
   for whom `has_perm()` is always true, still does not get documents that
   require a permission name defined only in code: pass the names such a
   reader holds yourself if they should.
+- `language`, when given, is a language range: only chunks of documents
+  in that language are compared, as RFC 4647 basic filtering matches
+  them. The comparison ignores case, and a range covers its subtags:
+  `"fr"` matches `fr`, `fr-FR` and `fr-CA`, but not `frr`; `"fr-FR"`
+  matches `fr-FR` (and `fr-fr`), but neither `fr-CA` nor `fr`. Chunks of
+  documents of unknown language (`None` or `""`) are kept. The filtering
+  is part of the vector query, like that of permissions, so a nearer chunk
+  in another language never takes the place of one in the language asked
+  for. Tags are compared as stored, without normalization: subtags are
+  separated by `-`, as in BCP 47, so a POSIX locale such as `fr_CA`
+  matches only itself. The wildcard `"*"` is not accepted: pass `None` to
+  search every language.
 - Each result is a frozen `RetrievedChunk` of plain values: its `text`,
   its document's `title`, `url` and `source_key`, and its `distance` to the
   question. They come from a single query.
-- `ValueError` is raised when `limit` is below 1, when the backend
+- `ValueError` is raised when `limit` is below 1, when `language` is
+  blank, holds whitespace or is `"*"`, when the backend
   returns another number of vectors than one for the question, and when
   that vector is all zeros: it has no direction to compare chunks to.
 
@@ -328,8 +342,9 @@ the prompt it was given, so a test sees what the LLM was sent.
 ## Answering
 
 `django_minimal_rag.answering.answer(question, *, permissions,
-max_distance, limit=5)` answers a question from the chunks `retrieve()`
-returns for the same arguments:
+max_distance, limit=5, language=None)` answers a question from the chunks
+`retrieve()` returns for the same arguments — with `language`, only from
+chunks in that language or of unknown language:
 
 ```python
 result = answer(
@@ -349,8 +364,9 @@ else:
 
 - The LLM backend is resolved first: without a valid `MINIMAL_RAG_LLM`,
   it raises `ImproperlyConfigured` even when nothing is indexed.
-- With no chunk within `max_distance`, it returns `None` and the LLM is
-  not called: there is no answer from the LLM's own knowledge.
+- With no chunk within `max_distance` — in `language`, when given — it
+  returns `None` and the LLM is not called: there is no answer from the
+  LLM's own knowledge.
 - Otherwise the LLM is called once. Its system prompt tells it to answer
   the question in the `<question>` element only from the `<extract>` and
   `<title>` elements in the `<document>` elements, to say so when they do

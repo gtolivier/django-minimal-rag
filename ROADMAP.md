@@ -226,7 +226,11 @@ implements.
   added when the number of chunks calls for it (not part of feature 7).
   Retrieval's distance sits inside a `CASE` on the model name, which keeps
   other models' vectors out of the comparison but which no index can serve:
-  the index's feature revisits that expression. Permissions are an
+  the index's feature revisits that expression, and the permission and
+  language filters with it: pgvector applies them after an HNSW scan, so
+  a rare permission or language could get fewer than `limit` chunks
+  unless iterative scans (`hnsw.iterative_scan`) or another plan keep
+  them in. Permissions are an
   `ArrayField` of names, so host projects install `django.contrib.postgres`.
   `title`, `url` and `language` are unbounded text; `source_key` is at most
   500 characters, which keeps it within what a PostgreSQL unique index
@@ -278,6 +282,20 @@ implements.
   written, and to write them as they are in the answer, which the package
   does not unescape. The prompt is not customizable, and answers are not streamed,
   until a project needs it.
+- **Retrieval filters on a language range, at query time.** `retrieve()`
+  and `answer()` take an optional `language`, a language range matched as
+  RFC 4647 basic filtering does: case-insensitive, and a range covers its
+  subtags (`fr` matches `fr-CA`, not `frr`; `fr-FR` matches neither
+  `fr-CA` nor `fr`). The comparison is made in the query, so storage keeps
+  the producer's tag as it is and needs no migration nor canonical form:
+  Django's `fr-fr` and BCP 47's `fr-FR` match alike. A document's
+  `language` of `None` or `""` means unknown, with no fallback on
+  `LANGUAGE_CODE`, and a filtered search keeps it: a document of unknown
+  language may well be in the language asked for. A range that is blank,
+  holds whitespace or is the wildcard `*` raises `ValueError` rather than
+  matching nothing or everything: `None` is the one way to search every
+  language, and a range is never trimmed or rewritten. Script subtags (`zh-hans`) follow the
+  same rule: `zh` covers them, and no tag is rewritten.
 - **Citations are built by the package, not by the LLM.** An `Answer`
   holds the LLM's `text` and its `citations`: one `Citation(title, url,
   source_key)` per document whose chunks were sent, in the order of its
@@ -295,12 +313,6 @@ implements.
 
 Each one is settled before the feature that needs its answer.
 
-- **Language:** what a document's `language` of `None` means — falling
-  back on `LANGUAGE_CODE` or not — and how languages are compared. Storage
-  keeps the producer's tag as it is, unbounded; but Django writes `fr-fr`
-  where BCP 47's canonical form is `fr-FR`, and some tags carry a script
-  (`zh-hans`, `sr-latn`) rather than a region. The feature that first reads
-  `language` decides its canonical form and where it is normalized.
 - **Orphaned chunks:** `replace()` and `prune()` remove what their producer
   reports, but the chunks of a source no producer reports any more — a
   model no longer registered, a producer that never prunes — stay
@@ -352,8 +364,8 @@ Provisional: the design pass may reorder, split or merge them.
 - [x] **6. `prune()`.** Sources of a model that are not kept are removed.
 - [x] **7. Retrieval.** The nearest chunks to a question that the user
   may read, within the relevance threshold. Permission filtering is part of
-  the first retrieval, never added afterwards. Retrieval does not filter on
-  `language` (the open question stays open), and the HNSW index is
+  the first retrieval, never added afterwards. Retrieval did not filter on
+  `language` at first (feature 12 added it), and the HNSW index is
   deferred until the number of chunks calls for it.
 - [x] **8. Cited answers.** The LLM answers from the retrieved chunks, with
   citations to their sources.
@@ -372,6 +384,11 @@ Provisional: the design pass may reorder, split or merge them.
   setting, `MINIMAL_RAG_DEFER_EMBEDDING`, defers it to the project.
   Concurrent runs claim their batches with a lease, and `embed_pending()`
   fills only missing vectors (see "Decisions").
+- [x] **12. Language filter.** `retrieve()` and `answer()` take an
+  optional `language` range, matched as RFC 4647 basic filtering does,
+  in the vector query; documents of unknown language are kept, and a
+  range that is blank, holds whitespace or is `*` raises `ValueError` (see
+  "Decisions").
 
 ## Not planned here
 

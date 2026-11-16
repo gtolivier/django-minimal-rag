@@ -392,6 +392,163 @@ def test_retrieve_returns_a_chunk_only_to_a_reader_holding_all_its_permissions(
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_language_leaves_out_a_nearer_chunk_in_another_language(
+    settings: "Settings",
+) -> None:
+    english_text = "The shop opens at nine."
+    french_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    # Cosine distances to the question: English 0.0, French 0.2. With a limit
+    # of 1, the French chunk is only returned if the English one is left out
+    # by the query itself, before the limit applies.
+    use_chosen_embeddings(
+        settings,
+        {english_text: [1.0, 0.0], french_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    french_page = replace(public_page(french_text), language="fr")
+    replace_and_run_on_commit({"page:1": [public_page(english_text), french_page]})
+
+    retrieved = retrieve(
+        question,
+        permissions=frozenset(),
+        max_distance=1.0,
+        limit=1,
+        language="fr",
+    )
+
+    assert [chunk.text for chunk in retrieved] == [french_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_in_a_language_keeps_a_chunk_of_a_document_of_unknown_language(
+    settings: "Settings",
+) -> None:
+    chunk_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    unknown_language_page = replace(public_page(chunk_text), language=None)
+    replace_and_run_on_commit({"page:1": [unknown_language_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_in_a_language_keeps_a_chunk_of_a_document_of_empty_language(
+    settings: "Settings",
+) -> None:
+    # An empty language is a language left blank: unknown, like None.
+    chunk_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    empty_language_page = replace(public_page(chunk_text), language="")
+    replace_and_run_on_commit({"page:1": [empty_language_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_in_a_language_compares_languages_without_regard_to_case(
+    settings: "Settings",
+) -> None:
+    chunk_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    lowercase_page = replace(public_page(chunk_text), language="fr-fr")
+    replace_and_run_on_commit({"page:1": [lowercase_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr-FR"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_in_a_language_keeps_its_subtags_but_not_a_longer_language_code(
+    settings: "Settings",
+) -> None:
+    canadian_text = "La boutique ouvre à neuf heures, heure de Montréal."
+    frisian_text = "De winkel giet om njoggen oere iepen."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(
+        settings,
+        {canadian_text: [1.0, 0.0], frisian_text: [1.0, 0.0], question: [1.0, 0.0]},
+    )
+    # "fr-CA" is French with a region subtag; "frr" (North Frisian) only
+    # starts with the same letters, without a subtag boundary after "fr".
+    canadian_page = replace(public_page(canadian_text), language="fr-CA")
+    frisian_page = replace(public_page(frisian_text), language="frr")
+    replace_and_run_on_commit({"page:1": [canadian_page, frisian_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [canadian_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_in_a_regional_language_leaves_out_other_regions_and_bare_language(
+    settings: "Settings",
+) -> None:
+    french_text = "La boutique ouvre à neuf heures, heure de Paris."
+    canadian_text = "La boutique ouvre à neuf heures, heure de Montréal."
+    bare_french_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(
+        settings,
+        {
+            french_text: [1.0, 0.0],
+            canadian_text: [1.0, 0.0],
+            bare_french_text: [1.0, 0.0],
+            question: [1.0, 0.0],
+        },
+    )
+    french_page = replace(public_page(french_text), language="fr-FR")
+    canadian_page = replace(public_page(canadian_text), language="fr-CA")
+    bare_french_page = replace(public_page(bare_french_text), language="fr")
+    replace_and_run_on_commit(
+        {"page:1": [french_page, canadian_page, bare_french_page]}
+    )
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr-FR"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [french_text]
+
+
+@pytest.mark.django_db
+def test_retrieve_without_a_language_returns_chunks_of_documents_in_several_languages(
+    settings: "Settings",
+) -> None:
+    french_text = "La boutique ouvre à neuf heures."
+    english_text = "The shop opens at nine."
+    question = "When does the shop open?"
+    use_chosen_embeddings(
+        settings,
+        {french_text: [1.0, 0.0], english_text: [1.0, 0.0], question: [1.0, 0.0]},
+    )
+    french_page = replace(public_page(french_text), language="fr")
+    english_page = replace(public_page(english_text), language="en")
+    replace_and_run_on_commit({"page:1": [french_page, english_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language=None
+    )
+
+    assert {chunk.text for chunk in retrieved} == {french_text, english_text}
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
@@ -399,6 +556,47 @@ def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
             permissions=frozenset(),
             max_distance=1.0,
             limit=0,
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("blank_language", ["", "  \t"])
+def test_retrieve_with_a_blank_language_raises_value_error(blank_language: str) -> None:
+    with pytest.raises(ValueError, match="language"):
+        retrieve(
+            "What are the opening hours?",
+            permissions=frozenset(),
+            max_distance=1.0,
+            language=blank_language,
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("spaced_language", ["fr ", " fr", "fr CA"])
+def test_retrieve_with_whitespace_in_the_language_raises_value_error(
+    spaced_language: str,
+) -> None:
+    with pytest.raises(ValueError, match="language"):
+        retrieve(
+            "What are the opening hours?",
+            permissions=frozenset(),
+            max_distance=1.0,
+            language=spaced_language,
+        )
+
+
+@pytest.mark.django_db
+def test_retrieve_with_the_wildcard_language_raises_value_error_pointing_to_none() -> (
+    None
+):
+    # The wildcard of RFC 4647 language ranges is not accepted: the message
+    # must point the caller to None, which searches every language.
+    with pytest.raises(ValueError, match=r"\bNone\b"):
+        retrieve(
+            "What are the opening hours?",
+            permissions=frozenset(),
+            max_distance=1.0,
+            language="*",
         )
 
 

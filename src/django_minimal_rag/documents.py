@@ -37,9 +37,10 @@ class Document(Protocol):
 
     @property
     def language(self) -> str | None:
-        """The language of the text.
+        """The language of the text, as a BCP 47 tag such as ``"fr-CA"``.
 
-        What `None` means is not settled yet.
+        `None` (or `""`) means unknown: a search filtered on a language
+        keeps the document.
         """
 
     @property

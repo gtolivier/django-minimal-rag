@@ -717,6 +717,61 @@ def test_answer_never_gives_the_llm_a_chunk_the_reader_may_not_read(
 
 
 @pytest.mark.django_db
+def test_answer_in_a_language_never_gives_the_llm_a_chunk_in_another_language(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    english_text = "The shop opens at nine."
+    french_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    # Cosine distances to the question: English 0.0, French 0.2.
+    use_chosen_embeddings(
+        settings,
+        {english_text: [1.0, 0.0], french_text: [4.0, 3.0], question: [1.0, 0.0]},
+    )
+    french_page = replace(public_page(french_text), language="fr")
+    replace_and_run_on_commit({"page:1": [public_page(english_text), french_page]})
+
+    answer(question, permissions=frozenset(), max_distance=1.0, language="fr")
+
+    [(prompt, _system)] = llm_calls
+    assert french_text in prompt
+    assert english_text not in prompt
+
+
+@pytest.mark.django_db
+def test_answer_in_a_language_with_only_chunks_in_another_returns_none_without_llm(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    english_text = "The shop opens at nine."
+    question = "À quelle heure ouvre la boutique ?"
+    # Cosine distance of the English chunk to the question: 0.0.
+    use_chosen_embeddings(settings, {english_text: [1.0, 0.0], question: [1.0, 0.0]})
+    replace_and_run_on_commit({"page:1": [public_page(english_text)]})
+
+    answered = answer(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert answered is None
+    assert llm_calls == []
+
+
+@pytest.mark.django_db
+def test_answer_with_the_wildcard_language_raises_value_error_without_llm(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    question = "What are the opening hours?"
+    # A chunk near the question, so only the malformed language keeps the
+    # LLM from being called.
+    index_one_chunk_near(settings, question, public_page("The shop opens at nine."))
+
+    with pytest.raises(ValueError, match="language"):
+        answer(question, permissions=frozenset(), max_distance=1.0, language="*")
+
+    assert llm_calls == []
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("title", "url", "source_key"),
     [
