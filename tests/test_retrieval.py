@@ -478,6 +478,37 @@ def test_retrieve_in_a_language_keeps_its_subtags_but_not_a_longer_language_code
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_regional_language_leaves_out_other_regions_and_bare_language(
+    settings: "Settings",
+) -> None:
+    french_text = "La boutique ouvre à neuf heures, heure de Paris."
+    canadian_text = "La boutique ouvre à neuf heures, heure de Montréal."
+    bare_french_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(
+        settings,
+        {
+            french_text: [1.0, 0.0],
+            canadian_text: [1.0, 0.0],
+            bare_french_text: [1.0, 0.0],
+            question: [1.0, 0.0],
+        },
+    )
+    french_page = replace(public_page(french_text), language="fr-FR")
+    canadian_page = replace(public_page(canadian_text), language="fr-CA")
+    bare_french_page = replace(public_page(bare_french_text), language="fr")
+    replace_and_run_on_commit(
+        {"page:1": [french_page, canadian_page, bare_french_page]}
+    )
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr-FR"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [french_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
