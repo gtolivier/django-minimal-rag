@@ -59,6 +59,7 @@ def answer(
     permissions: AbstractSet[str],
     max_distance: float,
     limit: int = DEFAULT_LIMIT,
+    language: str | None = None,
 ) -> Answer | None:
     """Return the LLM's answer from the at most ``limit`` chunks near ``question``.
 
@@ -66,7 +67,11 @@ def answer(
     """
     llm = get_llm()
     chunks = retrieve(
-        question, permissions=permissions, max_distance=max_distance, limit=limit
+        question,
+        permissions=permissions,
+        max_distance=max_distance,
+        limit=limit,
+        language=language,
     )
     if not chunks:
         return None
