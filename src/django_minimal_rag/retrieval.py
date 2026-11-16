@@ -75,7 +75,11 @@ def retrieve(
 def _candidate_chunks(
     model: str, permissions: AbstractSet[str], language: str | None
 ) -> QuerySet[Chunk]:
-    """The chunks of ``model`` the reader may see, only in ``language`` if given."""
+    """The chunks of ``model`` the reader may see.
+
+    If ``language`` is given, only those of documents in that language or of
+    unknown language.
+    """
     chunks = Chunk.objects.filter(
         embedding_model=model,
         document__permissions__contained_by=list(permissions),
