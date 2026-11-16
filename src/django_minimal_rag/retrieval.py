@@ -53,7 +53,8 @@ def retrieve(
     by their rank in it.
 
     Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if ``language``
-    is blank or holds whitespace, if the backend does not return exactly one
+    is blank, holds whitespace or is the wildcard ``"*"`` (pass ``None`` to
+    search every language), if the backend does not return exactly one
     vector for the question, or if that vector is all zeros.
     """
     _require_positive_limit(limit)
@@ -122,7 +123,7 @@ def _require_positive_limit(limit: int) -> None:
 
 
 def _require_well_formed_language(language: str | None) -> None:
-    """Raise ``ValueError`` if ``language`` is blank or holds whitespace."""
+    """Raise ``ValueError`` if ``language`` is blank, holds whitespace or is ``"*"``."""
     if language is None:
         return
     if not language.strip():
