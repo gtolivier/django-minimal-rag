@@ -33,6 +33,7 @@ def retrieve(
     permissions: AbstractSet[str],
     max_distance: float,
     limit: int = DEFAULT_LIMIT,
+    language: str | None = None,
 ) -> list[RetrievedChunk]:
     """Return the at most ``limit`` chunks nearest to ``question``, nearest first.
 
@@ -51,12 +52,14 @@ def retrieve(
     _require_positive_limit(limit)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
+    chunks = Chunk.objects.filter(
+        embedding_model=embeddings.model,
+        document__permissions__contained_by=list(permissions),
+    )
+    if language is not None:
+        chunks = chunks.filter(document__language=language)
     rows = (
-        Chunk.objects.filter(
-            embedding_model=embeddings.model,
-            document__permissions__contained_by=list(permissions),
-        )
-        .annotate(distance=_distance_to(question_embedding, embeddings.model))
+        chunks.annotate(distance=_distance_to(question_embedding, embeddings.model))
         .order_by("distance", "document_id", "rank")
         .values(
             "text",
