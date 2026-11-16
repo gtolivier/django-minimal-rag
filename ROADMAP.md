@@ -287,7 +287,9 @@ implements.
   `url=""`: the project decides how to show it. An `Answer` also holds
   its `chunks`, the `RetrievedChunk`s sent to the LLM, nearest first, so
   a project can show the extracts behind an answer without retrieving
-  them again.
+  them again. It stores only `text` and `chunks`: `citations` is derived
+  from the chunks, so a hand-built `Answer` cannot cite documents its
+  chunks do not come from.
 
 ## Open questions
 

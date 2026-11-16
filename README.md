@@ -378,7 +378,10 @@ else:
 - The `Answer`'s `chunks` are the `RetrievedChunk`s the LLM was given, as a
   tuple in the order `retrieve()` returned them, nearest first — the
   prompt groups them by document instead: a project can show the extracts
-  an answer comes from.
+  an answer comes from. An `Answer` stores only its `text` and `chunks`:
+  `citations` is a property computed from the chunks, so the two always
+  agree — build one by hand, in a test say, as
+  `Answer(text=..., chunks=(...))`.
 - Exceptions from the LLM backend propagate, as do those of `retrieve()`.
   Answers are not streamed.
 
