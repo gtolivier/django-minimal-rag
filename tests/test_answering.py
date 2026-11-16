@@ -757,6 +757,21 @@ def test_answer_in_a_language_with_only_chunks_in_another_returns_none_without_l
 
 
 @pytest.mark.django_db
+def test_answer_with_the_wildcard_language_raises_value_error_without_llm(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    question = "What are the opening hours?"
+    # A chunk near the question, so only the malformed language keeps the
+    # LLM from being called.
+    index_one_chunk_near(settings, question, public_page("The shop opens at nine."))
+
+    with pytest.raises(ValueError, match="language"):
+        answer(question, permissions=frozenset(), max_distance=1.0, language="*")
+
+    assert llm_calls == []
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("title", "url", "source_key"),
     [
