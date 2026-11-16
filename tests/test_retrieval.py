@@ -454,6 +454,30 @@ def test_retrieve_in_a_language_compares_languages_without_regard_to_case(
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_language_keeps_its_subtags_but_not_a_longer_language_code(
+    settings: "Settings",
+) -> None:
+    canadian_text = "La boutique ouvre à neuf heures, heure de Montréal."
+    frisian_text = "De winkel giet om njoggen oere iepen."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(
+        settings,
+        {canadian_text: [1.0, 0.0], frisian_text: [1.0, 0.0], question: [1.0, 0.0]},
+    )
+    # "fr-CA" is French with a region subtag; "frr" (North Frisian) only
+    # starts with the same letters, without a subtag boundary after "fr".
+    canadian_page = replace(public_page(canadian_text), language="fr-CA")
+    frisian_page = replace(public_page(frisian_text), language="frr")
+    replace_and_run_on_commit({"page:1": [canadian_page, frisian_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [canadian_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
