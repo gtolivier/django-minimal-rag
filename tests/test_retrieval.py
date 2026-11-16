@@ -437,6 +437,23 @@ def test_retrieve_in_a_language_keeps_a_chunk_of_a_document_of_unknown_language(
 
 
 @pytest.mark.django_db
+def test_retrieve_in_a_language_compares_languages_without_regard_to_case(
+    settings: "Settings",
+) -> None:
+    chunk_text = "La boutique ouvre à neuf heures."
+    question = "À quelle heure ouvre la boutique ?"
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], question: [1.0, 0.0]})
+    lowercase_page = replace(public_page(chunk_text), language="fr-fr")
+    replace_and_run_on_commit({"page:1": [lowercase_page]})
+
+    retrieved = retrieve(
+        question, permissions=frozenset(), max_distance=1.0, language="fr-FR"
+    )
+
+    assert [chunk.text for chunk in retrieved] == [chunk_text]
+
+
+@pytest.mark.django_db
 def test_retrieve_with_a_limit_below_one_raises_value_error() -> None:
     with pytest.raises(ValueError, match="limit"):
         retrieve(
