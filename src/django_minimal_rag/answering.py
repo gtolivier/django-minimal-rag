@@ -36,7 +36,7 @@ class Citation:
     source_key: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Answer:
     """An answer to a question, as written by the LLM, with its citations.
 
