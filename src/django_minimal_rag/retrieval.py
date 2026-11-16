@@ -51,11 +51,11 @@ def retrieve(
     by their rank in it.
 
     Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if ``language``
-    is blank, if the backend does not return exactly one vector for the
-    question, or if that vector is all zeros.
+    is blank or holds whitespace, if the backend does not return exactly one
+    vector for the question, or if that vector is all zeros.
     """
     _require_positive_limit(limit)
-    _require_non_blank_language(language)
+    _require_well_formed_language(language)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
     chunks = _candidate_chunks(embeddings.model, permissions, language)
@@ -119,12 +119,14 @@ def _require_positive_limit(limit: int) -> None:
         raise ValueError(msg)
 
 
-def _require_non_blank_language(language: str | None) -> None:
+def _require_well_formed_language(language: str | None) -> None:
     """Raise ``ValueError`` if ``language`` is blank or holds whitespace."""
-    if language is not None and not language.strip():
+    if language is None:
+        return
+    if not language.strip():
         msg = "language must not be blank"
         raise ValueError(msg)
-    if language is not None and any(char.isspace() for char in language):
+    if any(char.isspace() for char in language):
         msg = "language must not contain whitespace"
         raise ValueError(msg)
 
