@@ -546,6 +546,21 @@ def test_retrieve_with_whitespace_in_the_language_raises_value_error(
 
 
 @pytest.mark.django_db
+def test_retrieve_with_the_wildcard_language_raises_value_error_pointing_to_none() -> (
+    None
+):
+    # The wildcard of RFC 4647 language ranges is not accepted: the message
+    # must point the caller to None, which searches every language.
+    with pytest.raises(ValueError, match=r"\bNone\b"):
+        retrieve(
+            "What are the opening hours?",
+            permissions=frozenset(),
+            max_distance=1.0,
+            language="*",
+        )
+
+
+@pytest.mark.django_db
 def test_retrieve_raises_value_error_when_the_backend_gives_the_question_two_vectors(
     settings: "Settings",
 ) -> None:
