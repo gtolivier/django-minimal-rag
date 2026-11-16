@@ -3,7 +3,7 @@
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from django.db.models import Case, F, QuerySet, When
+from django.db.models import Case, F, Q, QuerySet, When
 from pgvector.django import CosineDistance
 
 from django_minimal_rag.embeddings import Embeddings, get_embeddings
@@ -43,9 +43,9 @@ def retrieve(
     above it is left out. ``permissions`` are the names of the permissions
     the reader holds: a chunk is returned only if the reader holds every
     permission its document requires. If ``language`` is given, only chunks
-    of documents in that language are compared; documents of unknown
-    language are then left out. Chunks at the same distance are
-    ordered by their document's id, then by their rank in it.
+    of documents in that language, or of unknown language, are compared.
+    Chunks at the same distance are ordered by their document's id, then
+    by their rank in it.
 
     Raises ``ValueError`` if ``limit`` is below ``MIN_LIMIT``, if the
     backend does not return exactly one vector for the question, or if that
@@ -82,7 +82,9 @@ def _candidate_chunks(
     )
     if language is None:
         return chunks
-    return chunks.filter(document__language=language)
+    return chunks.filter(
+        Q(document__language=language) | Q(document__language__isnull=True)
+    )
 
 
 def _distance_to(question_embedding: list[float], model: str) -> Case:
