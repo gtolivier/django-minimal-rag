@@ -11,6 +11,8 @@ from django_minimal_rag.models import Chunk
 
 DEFAULT_LIMIT = 5
 MIN_LIMIT = 1
+# Separates the subtags of a language tag (BCP 47), as in "fr-CA".
+_SUBTAG_SEPARATOR = "-"
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,8 @@ def retrieve(
     above it is left out. ``permissions`` are the names of the permissions
     the reader holds: a chunk is returned only if the reader holds every
     permission its document requires. If ``language`` is given, only chunks
-    of documents in that language, or of unknown language, are compared.
+    of documents in that language, one of its subtags (``"fr"`` covers
+    ``"fr-CA"``, not ``"frr"``), or of unknown language, are compared.
     Chunks at the same distance are ordered by their document's id, then
     by their rank in it.
 
@@ -77,8 +80,8 @@ def _candidate_chunks(
 ) -> QuerySet[Chunk]:
     """The chunks of ``model`` the reader may see.
 
-    If ``language`` is given, only those of documents in that language or of
-    unknown language.
+    If ``language`` is given, only those of documents in that language, one
+    of its subtags, or of unknown language.
     """
     chunks = Chunk.objects.filter(
         embedding_model=model,
@@ -88,7 +91,7 @@ def _candidate_chunks(
         return chunks
     return chunks.filter(
         Q(document__language__iexact=language)
-        | Q(document__language__istartswith=f"{language}-")
+        | Q(document__language__istartswith=f"{language}{_SUBTAG_SEPARATOR}")
         | Q(document__language__isnull=True)
     )
 
