@@ -37,7 +37,10 @@ class Citation:
 
 @dataclass(frozen=True)
 class Answer:
-    """An answer to a question, as written by the LLM, with its citations."""
+    """An answer to a question, as written by the LLM, with its citations.
+
+    ``chunks`` are the chunks the LLM answered from, nearest first.
+    """
 
     text: str
     citations: tuple[Citation, ...]
