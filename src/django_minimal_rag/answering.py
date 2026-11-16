@@ -63,7 +63,9 @@ def answer(
 ) -> Answer | None:
     """Return the LLM's answer from the at most ``limit`` chunks near ``question``.
 
-    Return None, without calling the LLM, when no chunk is near enough.
+    With ``language``, only chunks in that language range, or of unknown
+    language, are given to the LLM, as ``retrieve()`` selects them. Return
+    None, without calling the LLM, when no chunk is near enough.
     """
     llm = get_llm()
     chunks = retrieve(

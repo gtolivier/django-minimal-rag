@@ -68,7 +68,8 @@ The app's models hold what gets indexed:
   `source_key` (at most 500 characters: PostgreSQL cannot index much
   longer unique values);
 - `Document` — a document of a source: its `title`, `url` and `language`
-  (unbounded text, the language tag stored as given, `None` when unknown)
+  (unbounded text, the BCP 47 language tag stored as given, `None` or
+  `""` when unknown)
   and `permissions` (a list of permission names, empty by default);
 - `Chunk` — a chunk of a document: its `rank`, `text`, the name of the
   `embedding_model` that produced its `embedding`, and that embedding. A
@@ -295,15 +296,18 @@ chunks = retrieve(
   them. The comparison ignores case, and a range covers its subtags:
   `"fr"` matches `fr`, `fr-FR` and `fr-CA`, but not `frr`; `"fr-FR"`
   matches `fr-FR` (and `fr-fr`), but neither `fr-CA` nor `fr`. Chunks of
-  documents of unknown language (`None`) are kept. The filtering is part
-  of the vector query, like that of permissions, so a nearer chunk in
-  another language never takes the place of one in the language asked
-  for. Tags are compared as stored, without normalization.
+  documents of unknown language (`None` or `""`) are kept. The filtering
+  is part of the vector query, like that of permissions, so a nearer chunk
+  in another language never takes the place of one in the language asked
+  for. Tags are compared as stored, without normalization: subtags are
+  separated by `-`, as in BCP 47, so a POSIX locale such as `fr_CA`
+  matches only itself. The wildcard `"*"` is not accepted: pass `None` to
+  search every language.
 - Each result is a frozen `RetrievedChunk` of plain values: its `text`,
   its document's `title`, `url` and `source_key`, and its `distance` to the
   question. They come from a single query.
 - `ValueError` is raised when `limit` is below 1, when `language` is
-  blank (empty or whitespace only), when the backend
+  blank, holds whitespace or is `"*"`, when the backend
   returns another number of vectors than one for the question, and when
   that vector is all zeros: it has no direction to compare chunks to.
 

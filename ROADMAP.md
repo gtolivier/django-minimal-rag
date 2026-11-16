@@ -226,7 +226,11 @@ implements.
   added when the number of chunks calls for it (not part of feature 7).
   Retrieval's distance sits inside a `CASE` on the model name, which keeps
   other models' vectors out of the comparison but which no index can serve:
-  the index's feature revisits that expression. Permissions are an
+  the index's feature revisits that expression, and the permission and
+  language filters with it: pgvector applies them after an HNSW scan, so
+  a rare permission or language could get fewer than `limit` chunks
+  unless iterative scans (`hnsw.iterative_scan`) or another plan keep
+  them in. Permissions are an
   `ArrayField` of names, so host projects install `django.contrib.postgres`.
   `title`, `url` and `language` are unbounded text; `source_key` is at most
   500 characters, which keeps it within what a PostgreSQL unique index
@@ -285,10 +289,12 @@ implements.
   `fr-CA` nor `fr`). The comparison is made in the query, so storage keeps
   the producer's tag as it is and needs no migration nor canonical form:
   Django's `fr-fr` and BCP 47's `fr-FR` match alike. A document's
-  `language` of `None` means unknown, with no fallback on `LANGUAGE_CODE`,
-  and a filtered search keeps it: a document of unknown language may well
-  be in the language asked for. A blank `language` raises `ValueError`
-  rather than matching nothing. Script subtags (`zh-hans`) follow the
+  `language` of `None` or `""` means unknown, with no fallback on
+  `LANGUAGE_CODE`, and a filtered search keeps it: a document of unknown
+  language may well be in the language asked for. A range that is blank,
+  holds whitespace or is the wildcard `*` raises `ValueError` rather than
+  matching nothing or everything: `None` is the one way to search every
+  language, and a range is never trimmed or rewritten. Script subtags (`zh-hans`) follow the
   same rule: `zh` covers them, and no tag is rewritten.
 - **Citations are built by the package, not by the LLM.** An `Answer`
   holds the LLM's `text` and its `citations`: one `Citation(title, url,
@@ -380,7 +386,8 @@ Provisional: the design pass may reorder, split or merge them.
   fills only missing vectors (see "Decisions").
 - [x] **12. Language filter.** `retrieve()` and `answer()` take an
   optional `language` range, matched as RFC 4647 basic filtering does,
-  in the vector query; documents of unknown language are kept (see
+  in the vector query; documents of unknown language are kept, and a
+  malformed range raises `ValueError` (see
   "Decisions").
 
 ## Not planned here
