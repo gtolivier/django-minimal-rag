@@ -11,6 +11,8 @@ from django_minimal_rag.models import Chunk
 
 DEFAULT_LIMIT = 5
 MIN_LIMIT = 1
+# The wildcard of RFC 4647 language ranges, which is not accepted.
+_WILDCARD = "*"
 # Separates the subtags of a language tag (BCP 47), as in "fr-CA".
 _SUBTAG_SEPARATOR = "-"
 
@@ -128,6 +130,9 @@ def _require_well_formed_language(language: str | None) -> None:
         raise ValueError(msg)
     if any(char.isspace() for char in language):
         msg = "language must not contain whitespace"
+        raise ValueError(msg)
+    if language == _WILDCARD:
+        msg = f'language must not be "{_WILDCARD}"; pass None to search every language'
         raise ValueError(msg)
 
 
