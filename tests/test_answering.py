@@ -6,6 +6,7 @@ import pytest
 from django.core.exceptions import ImproperlyConfigured
 
 from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
+from django_minimal_rag.retrieval import RetrievedChunk
 from tests.documents import SampleDocument, public_page
 from tests.embeddings import use_chosen_embeddings
 from tests.indexing import replace_and_run_on_commit
@@ -800,3 +801,49 @@ def test_answer_gives_its_citations_as_a_tuple(settings: "Settings") -> None:
 
     assert answered is not None
     assert isinstance(answered.citations, tuple)
+
+
+@pytest.mark.django_db
+def test_answer_holds_the_chunk_retrieved_for_its_question(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    question = "When does the shop open?"
+    # The chunk is orthogonal to the question: cosine distance exactly 1.0.
+    use_chosen_embeddings(settings, {chunk_text: [0.0, 1.0], question: [1.0, 0.0]})
+    page = replace(
+        public_page(chunk_text, "faq:7"),
+        title="Shop FAQ",
+        url="https://shop.example.org/faq/#hours",
+    )
+    replace_and_run_on_commit({page.source_key: [page]})
+    use_canned_llm(settings, "The shop opens at nine.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=1.0)
+
+    assert answered is not None
+    assert answered.chunks == (
+        RetrievedChunk(
+            text=chunk_text,
+            title="Shop FAQ",
+            url="https://shop.example.org/faq/#hours",
+            source_key="faq:7",
+            distance=1.0,
+        ),
+    )
+
+
+@pytest.mark.django_db
+def test_answer_holds_only_the_limit_nearest_chunks_nearest_first(
+    settings: "Settings",
+) -> None:
+    question = "When does the shop open?"
+    # All three within max_distance.
+    nearest, middle, _farthest = index_three_chunks_near(settings, question)
+    use_canned_llm(settings, "The shop opens at nine, at ten on Saturdays.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.5, limit=2)
+
+    assert answered is not None
+    assert all(isinstance(chunk, RetrievedChunk) for chunk in answered.chunks)
+    assert [chunk.text for chunk in answered.chunks] == [nearest, middle]

@@ -343,6 +343,8 @@ else:
     result.text  # the LLM's answer
     for citation in result.citations:
         citation.title, citation.url, citation.source_key
+    for chunk in result.chunks:
+        chunk.text, chunk.title, chunk.url, chunk.source_key, chunk.distance
 ```
 
 - The LLM backend is resolved first: without a valid `MINIMAL_RAG_LLM`,
@@ -366,13 +368,20 @@ else:
   Neither prompt is customizable yet.
 - The result is a frozen `Answer`: the LLM's `text`, as it wrote it —
   told to write `<`, `>` and `&` unescaped, it may still copy an entity
-  from the prompt, and the package does not unescape it — and
-  its `citations`, a tuple of frozen `Citation`s of the `title`, `url` and
-  `source_key` of each document a chunk came from. They are built from the
+  from the prompt, and the package does not unescape it — its `chunks`
+  (below), and its `citations`, a tuple of frozen `Citation`s of the
+  `title`, `url` and `source_key` of each document a chunk came from. They are built from the
   chunks, not from what the LLM wrote: one per document, in the order of
   its nearest chunk. Documents of the same source with a different title
   or URL — translations, say — are cited separately. A document indexed
   without a URL is cited with `url=""`: show its title alone.
+- The `Answer`'s `chunks` are the `RetrievedChunk`s the LLM was given, as a
+  tuple in the order `retrieve()` returned them, nearest first — the
+  prompt groups them by document instead: a project can show the extracts
+  an answer comes from. An `Answer` stores only its `text` and `chunks`:
+  `citations` is a property computed from the chunks, so the two always
+  agree — build one by hand, in a test say, with keywords only, as
+  `Answer(text=..., chunks=(...))`.
 - Exceptions from the LLM backend propagate, as do those of `retrieve()`.
   Answers are not streamed.
 

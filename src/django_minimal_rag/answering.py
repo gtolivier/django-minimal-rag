@@ -1,5 +1,6 @@
 """Answering questions from indexed chunks."""
 
+from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from html import escape
@@ -35,12 +36,21 @@ class Citation:
     source_key: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Answer:
-    """An answer to a question, as written by the LLM, with its citations."""
+    """An answer to a question, as written by the LLM, with its citations.
+
+    ``chunks`` are the chunks the LLM answered from, nearest first; the
+    citations are derived from them.
+    """
 
     text: str
-    citations: tuple[Citation, ...]
+    chunks: tuple[RetrievedChunk, ...]
+
+    @property
+    def citations(self) -> tuple[Citation, ...]:
+        """Return one citation per document, in the order of its nearest chunk."""
+        return _cite(self.chunks)
 
 
 def answer(
@@ -62,11 +72,11 @@ def answer(
         return None
     return Answer(
         text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
-        citations=_cite(chunks),
+        chunks=tuple(chunks),
     )
 
 
-def _cite(chunks: list[RetrievedChunk]) -> tuple[Citation, ...]:
+def _cite(chunks: Sequence[RetrievedChunk]) -> tuple[Citation, ...]:
     """Return one citation per document, in the order of its nearest chunk."""
     return tuple(dict.fromkeys(_citation(chunk) for chunk in chunks))
 
@@ -76,7 +86,7 @@ def _citation(chunk: RetrievedChunk) -> Citation:
     return Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
 
 
-def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
+def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
     """Return each document as an element, then ``question`` in a tag."""
     return PROMPT_PART_SEPARATOR.join(
         [
@@ -90,7 +100,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
 
 
 def _group_by_document(
-    chunks: list[RetrievedChunk],
+    chunks: Sequence[RetrievedChunk],
 ) -> list[list[RetrievedChunk]]:
     """Return the chunks of each document, in the order of its nearest chunk."""
     by_document: dict[Citation, list[RetrievedChunk]] = {}
@@ -99,7 +109,7 @@ def _group_by_document(
     return list(by_document.values())
 
 
-def _document(chunks: list[RetrievedChunk]) -> str:
+def _document(chunks: Sequence[RetrievedChunk]) -> str:
     """Return the chunks of one document: its title, then its extracts."""
     return PROMPT_PART_SEPARATOR.join(
         [

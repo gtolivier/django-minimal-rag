@@ -284,7 +284,12 @@ implements.
   nearest chunk, so they do not depend on what the LLM writes. Two
   documents of one source — translations, say — are cited separately when
   their title or URL differs. A document without a URL is cited with
-  `url=""`: the project decides how to show it.
+  `url=""`: the project decides how to show it. An `Answer` also holds
+  its `chunks`, the `RetrievedChunk`s sent to the LLM, nearest first, so
+  a project can show the extracts behind an answer without retrieving
+  them again. It stores only `text` and `chunks`: `citations` is derived
+  from the chunks, so a hand-built `Answer` cannot cite documents its
+  chunks do not come from.
 
 ## Open questions
 
