@@ -970,6 +970,35 @@ def test_answer_with_history_gives_the_rewrite_each_exchange_escaped_in_its_elem
 
 
 @pytest.mark.django_db
+def test_rewrite_instructions_name_every_element_of_the_rewrite_prompt(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    llm_calls = use_recording_llm(settings, "When does the shop open on Saturdays?")
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    answer(question, permissions=frozenset(), max_distance=0.1, history=history)
+
+    (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
+    # The names of the prompt's opening tags; closing tags start with a slash.
+    element_names = set(re.findall(r"<([\w-]+)>", rewrite_prompt))
+    assert element_names == {
+        "exchange",
+        "previous-question",
+        "previous-answer",
+        "question",
+    }
+    assert {
+        name for name in element_names if f"<{name}>" not in rewrite_system
+    } == set()
+
+
+@pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
