@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from html import escape
 
 from django_minimal_rag.llm import LLM, get_llm
-from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
+from django_minimal_rag.retrieval import (
+    DEFAULT_LIMIT,
+    RetrievedChunk,
+    require_well_formed_language,
+    retrieve,
+)
 
 PROMPT_PART_SEPARATOR = "\n"
 QUESTION_ELEMENT = "question"
@@ -86,6 +91,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     language, are given to the LLM, as ``retrieve()`` selects them. Return
     None, without calling the LLM, when no chunk is near enough.
     """
+    require_well_formed_language(language)
     llm = get_llm()
     search_question = _search_question(llm, question, history)
     chunks = retrieve(

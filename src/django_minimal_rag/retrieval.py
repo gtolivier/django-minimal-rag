@@ -60,7 +60,7 @@ def retrieve(
     vector for the question, or if that vector is all zeros.
     """
     _require_positive_limit(limit)
-    _require_well_formed_language(language)
+    require_well_formed_language(language)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
     chunks = _candidate_chunks(embeddings.model, permissions, language)
@@ -124,7 +124,7 @@ def _require_positive_limit(limit: int) -> None:
         raise ValueError(msg)
 
 
-def _require_well_formed_language(language: str | None) -> None:
+def require_well_formed_language(language: str | None) -> None:
     """Raise ``ValueError`` if ``language`` is blank, holds whitespace or is ``"*"``."""
     if language is None:
         return
