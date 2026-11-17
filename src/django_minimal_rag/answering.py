@@ -89,9 +89,12 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     llm = get_llm()
     search_question = question
     if history:
-        search_question = llm.complete(
-            _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
-        ).strip()
+        search_question = (
+            llm.complete(
+                _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
+            ).strip()
+            or question
+        )
     chunks = retrieve(
         search_question,
         permissions=permissions,
