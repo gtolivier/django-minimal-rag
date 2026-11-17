@@ -42,10 +42,11 @@ ANSWER_INSTRUCTIONS = (
 REWRITE_INSTRUCTIONS = (
     f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
     f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
-    f"Rewrite the <{QUESTION_ELEMENT}> so that it can be understood without the "
-    f"conversation. In the conversation, {ESCAPED_FORMS}; "
-    f"in the rewrite, {WRITE_UNESCAPED} "
-    "Reply with the rewritten question only."
+    f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
+    "stands on its own, in the language of that question, without answering it, "
+    "and write only that question. "
+    f"In the conversation, {ESCAPED_FORMS}; "
+    f"in the rewrite, {WRITE_UNESCAPED}"
 )
 
 
