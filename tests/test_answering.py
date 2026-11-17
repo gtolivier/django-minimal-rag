@@ -737,6 +737,38 @@ def test_answer_with_history_gives_the_rewrite_the_exchange_before_the_question(
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_rewrite_each_exchange_in_the_history_order(
+    settings: "Settings",
+) -> None:
+    question = "And on Sundays?"
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        ),
+        Exchange(
+            question="And on Saturdays?",
+            answer="On Saturdays the shop opens at ten.",
+        ),
+    ]
+    llm_calls = use_recording_llm(settings, "When does the shop open on Sundays?")
+
+    answer(question, permissions=frozenset(), max_distance=0.1, history=history)
+
+    (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
+    assert rewrite_system == REWRITE_INSTRUCTIONS
+    # The whitespace between tags is not pinned, only the elements and their order.
+    elements = re.sub(r">\s+<", "><", rewrite_prompt)
+    assert re.findall(r"<exchange>.*?</exchange>", elements, flags=re.DOTALL) == [
+        "<exchange>"
+        f"<previous-question>{exchange.question}</previous-question>"
+        f"<previous-answer>{exchange.answer}</previous-answer>"
+        "</exchange>"
+        for exchange in history
+    ]
+
+
+@pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
