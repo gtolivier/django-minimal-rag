@@ -9,8 +9,7 @@ from django_minimal_rag.llm import LLM, get_llm
 from django_minimal_rag.retrieval import (
     DEFAULT_LIMIT,
     RetrievedChunk,
-    require_positive_limit,
-    require_well_formed_language,
+    require_valid_options,
     retrieve,
 )
 
@@ -72,7 +71,8 @@ class Answer:
     """An answer to a question, as written by the LLM, with its citations.
 
     ``chunks`` are the chunks the LLM answered from, nearest first; the
-    citations are derived from them.
+    citations are derived from them. ``search_question`` is the question
+    they were searched near: the question asked, or its standalone rewrite.
     """
 
     text: str
@@ -94,14 +94,22 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     language: str | None = None,
     history: Sequence[Exchange] = (),
 ) -> Answer | None:
-    """Return the LLM's answer from the at most ``limit`` chunks near ``question``.
+    """Return the LLM's answer from the at most ``limit`` chunks near the question.
+
+    Without ``history``, the chunks are searched near ``question``. With it,
+    the LLM first rewrites ``question`` to stand without the conversation,
+    and the chunks are searched near that rewrite (near ``question`` itself
+    if the rewrite is blank); the LLM then answers the rewrite. The question
+    searched is kept as the answer's ``search_question``.
 
     With ``language``, only chunks in that language range, or of unknown
     language, are given to the LLM, as ``retrieve()`` selects them. Return
-    None, without calling the LLM, when no chunk is near enough.
+    None, without asking the LLM for an answer, when no chunk is near enough.
+
+    Raises ``ValueError``, before any call to the LLM, if ``retrieve()``
+    would refuse ``limit`` or ``language``.
     """
-    require_positive_limit(limit)
-    require_well_formed_language(language)
+    require_valid_options(limit=limit, language=language)
     llm = get_llm()
     search_question = _search_question(llm, question, history)
     chunks = retrieve(
