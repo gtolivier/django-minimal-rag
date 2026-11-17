@@ -185,6 +185,24 @@ def test_answer_with_a_chunk_near_the_question_returns_the_llm_reply_as_its_text
 @pytest.mark.parametrize(
     "question", ["When does the shop open?", "Is the shop open on weekdays?"]
 )
+def test_answer_without_history_searches_with_the_question_asked(
+    settings: "Settings", question: str
+) -> None:
+    index_one_chunk_near(
+        settings, question, public_page("The shop opens at nine on weekdays.")
+    )
+    use_canned_llm(settings, "The shop opens at nine.")
+
+    answered = answer(question, permissions=frozenset(), max_distance=0.1)
+
+    assert answered is not None
+    assert answered.search_question == question
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "question", ["When does the shop open?", "Is the shop open on weekdays?"]
+)
 def test_answer_gives_the_llm_a_prompt_holding_the_question(
     settings: "Settings", llm_calls: list[tuple[str, str]], question: str
 ) -> None:
