@@ -44,8 +44,8 @@ REWRITE_INSTRUCTIONS = (
     f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
     "stands on its own, in the language of that question, without answering it, "
     "and write only that question. "
-    f"In the conversation, {ESCAPED_FORMS}; "
-    f"in the rewrite, {WRITE_UNESCAPED}"
+    f"In the elements, {ESCAPED_FORMS}. "
+    f"In the rewrite, {WRITE_UNESCAPED}"
 )
 
 
