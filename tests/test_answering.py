@@ -736,6 +736,38 @@ def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question
 
 
 @pytest.mark.django_db
+def test_answer_with_history_searches_with_the_rewrite_stripped_of_whitespace(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    # The LLM replies this to every prompt, the rewriting one included.
+    reply = "\n  When does the shop open on Saturdays?  \n"
+    rewritten = "When does the shop open on Saturdays?"
+    chunk_text = "On Saturdays the shop opens at ten."
+    # The chunk is about 0.005 from the rewrite, stripped or not: this test
+    # pins the search question, not the text the chunks are retrieved with.
+    use_chosen_embeddings(
+        settings,
+        {chunk_text: [1.0, 0.0], rewritten: [1.0, 0.1], reply: [1.0, 0.1]},
+    )
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
+    use_recording_llm(settings, reply)
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    answered = answer(
+        question, permissions=frozenset(), max_distance=0.1, history=history
+    )
+
+    assert answered is not None
+    assert answered.search_question == rewritten
+
+
+@pytest.mark.django_db
 def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question(
     settings: "Settings",
 ) -> None:
