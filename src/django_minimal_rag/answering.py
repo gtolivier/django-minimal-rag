@@ -5,7 +5,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from html import escape
 
-from django_minimal_rag.llm import get_llm
+from django_minimal_rag.llm import LLM, get_llm
 from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
 
 PROMPT_PART_SEPARATOR = "\n"
@@ -87,14 +87,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     None, without calling the LLM, when no chunk is near enough.
     """
     llm = get_llm()
-    search_question = question
-    if history:
-        search_question = (
-            llm.complete(
-                _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
-            ).strip()
-            or question
-        )
+    search_question = _search_question(llm, question, history)
     chunks = retrieve(
         search_question,
         permissions=permissions,
@@ -111,6 +104,19 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
         chunks=tuple(chunks),
         search_question=search_question,
     )
+
+
+def _search_question(llm: LLM, question: str, history: Sequence[Exchange]) -> str:
+    """Return ``question`` rewritten by the LLM to stand without ``history``.
+
+    Without history, or when the rewrite is blank, return ``question`` itself.
+    """
+    if not history:
+        return question
+    rewritten = llm.complete(
+        _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
+    ).strip()
+    return rewritten or question
 
 
 def _cite(chunks: Sequence[RetrievedChunk]) -> tuple[Citation, ...]:
