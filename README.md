@@ -342,9 +342,9 @@ the prompt it was given, so a test sees what the LLM was sent.
 ## Answering
 
 `django_minimal_rag.answering.answer(question, *, permissions,
-max_distance, limit=5, language=None)` answers a question from the chunks
-`retrieve()` returns for the same arguments — with `language`, only from
-chunks in that language or of unknown language:
+max_distance, limit=5, language=None, history=())` answers a question from
+the chunks `retrieve()` returns for the same arguments — with `language`,
+only from chunks in that language or of unknown language:
 
 ```python
 result = answer(
@@ -362,12 +362,14 @@ else:
         chunk.text, chunk.title, chunk.url, chunk.source_key, chunk.distance
 ```
 
-- The LLM backend is resolved first: without a valid `MINIMAL_RAG_LLM`,
-  it raises `ImproperlyConfigured` even when nothing is indexed.
+- A `limit` below 1 or a malformed `language` raises `ValueError`, as
+  `retrieve()` does, before any call to the LLM. The LLM backend is
+  resolved next: without a valid `MINIMAL_RAG_LLM`, it raises
+  `ImproperlyConfigured` even when nothing is indexed.
 - With no chunk within `max_distance` — in `language`, when given — it
-  returns `None` and the LLM is not called: there is no answer from the
-  LLM's own knowledge.
-- Otherwise the LLM is called once. Its system prompt tells it to answer
+  returns `None` and the LLM is not asked for an answer: there is no
+  answer from the LLM's own knowledge.
+- Otherwise the LLM is asked for an answer once. Its system prompt tells it to answer
   the question in the `<question>` element only from the `<extract>` and
   `<title>` elements in the `<document>` elements, to say so when they do
   not hold the answer, and to answer in the language of the question; it
@@ -394,12 +396,53 @@ else:
 - The `Answer`'s `chunks` are the `RetrievedChunk`s the LLM was given, as a
   tuple in the order `retrieve()` returned them, nearest first — the
   prompt groups them by document instead: a project can show the extracts
-  an answer comes from. An `Answer` stores only its `text` and `chunks`:
-  `citations` is a property computed from the chunks, so the two always
-  agree — build one by hand, in a test say, with keywords only, as
-  `Answer(text=..., chunks=(...))`.
+  an answer comes from. An `Answer` stores only its `text`, `chunks` and
+  `search_question` (below): `citations` is a property computed from the
+  chunks, so the two always agree — build one by hand, in a test say, with
+  keywords only, as `Answer(text=..., chunks=(...), search_question=...)`.
 - Exceptions from the LLM backend propagate, as do those of `retrieve()`.
   Answers are not streamed.
+
+### Follow-up questions
+
+A follow-up question such as "And on Saturdays?" means little on its own.
+Pass the earlier exchanges of the conversation as `history`, oldest first,
+each a frozen `Exchange` built with keywords only:
+
+```python
+from django_minimal_rag.answering import Exchange, answer
+
+result = answer(
+    "And on Saturdays?",
+    permissions=request.user.get_all_permissions(),
+    max_distance=0.4,
+    history=[
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        ),
+    ],
+)
+result.search_question  # e.g. "When does the shop open on Saturdays?"
+```
+
+- With a history, the LLM is first asked to rewrite the question as one
+  that stands on its own, in the language of that question, without
+  answering it. Its prompt holds one `<exchange>` element per exchange, in
+  the history's order, each holding its `<previous-question>` then its
+  `<previous-answer>`, then the `<question>`; all are escaped as in the
+  answer prompt, and the rewrite instructions say so.
+- The chunks are then searched near the rewrite, stripped of the
+  whitespace around it, and the LLM answers the rewrite. A blank rewrite
+  falls back to the question asked. With nothing near the rewrite,
+  `answer()` returns `None` after the rewrite call alone.
+- The question the chunks were searched near is the `Answer`'s
+  `search_question`: the question asked without a history, the rewrite
+  with one. A project can show it, or log it to see what was searched.
+- The whole history is passed to the LLM: the project chooses how many
+  exchanges to keep (see "Open questions" in the [roadmap](ROADMAP.md)).
+- Without a history, `answer()` behaves as before: one call to the LLM,
+  and `search_question` is the question asked.
 
 ## Requirements
 
