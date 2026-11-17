@@ -59,7 +59,7 @@ def retrieve(
     search every language), if the backend does not return exactly one
     vector for the question, or if that vector is all zeros.
     """
-    _require_positive_limit(limit)
+    require_positive_limit(limit)
     require_well_formed_language(language)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
@@ -117,7 +117,7 @@ def _distance_to(question_embedding: list[float], model: str) -> Case:
     )
 
 
-def _require_positive_limit(limit: int) -> None:
+def require_positive_limit(limit: int) -> None:
     """Raise ``ValueError`` if ``limit`` is below ``MIN_LIMIT``."""
     if limit < MIN_LIMIT:
         msg = f"limit must be at least {MIN_LIMIT}, got {limit}"

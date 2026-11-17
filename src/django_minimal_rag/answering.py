@@ -9,6 +9,7 @@ from django_minimal_rag.llm import LLM, get_llm
 from django_minimal_rag.retrieval import (
     DEFAULT_LIMIT,
     RetrievedChunk,
+    require_positive_limit,
     require_well_formed_language,
     retrieve,
 )
@@ -91,6 +92,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     language, are given to the LLM, as ``retrieve()`` selects them. Return
     None, without calling the LLM, when no chunk is near enough.
     """
+    require_positive_limit(limit)
     require_well_formed_language(language)
     llm = get_llm()
     search_question = _search_question(llm, question, history)
