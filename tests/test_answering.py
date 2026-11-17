@@ -690,6 +690,26 @@ def test_answer_with_history_asks_the_llm_to_rewrite_the_question_then_to_answer
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    llm_calls = use_recording_llm(settings, "When does the shop open on Saturdays?")
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    answer(question, permissions=frozenset(), max_distance=0.1, history=history)
+
+    (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
+    assert rewrite_system == REWRITE_INSTRUCTIONS
+    assert rewrite_prompt.endswith(f"<question>{question}</question>")
+
+
+@pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
