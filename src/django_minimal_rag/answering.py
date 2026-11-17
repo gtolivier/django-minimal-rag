@@ -1,6 +1,6 @@
 """Answering questions from indexed chunks."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from html import escape
@@ -157,24 +157,21 @@ def _citation(chunk: RetrievedChunk) -> Citation:
 
 def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
     """Return each document as an element, then ``question`` in a tag."""
-    return PROMPT_PART_SEPARATOR.join(
-        [
-            *(
-                _document(document_chunks)
-                for document_chunks in _group_by_document(chunks)
-            ),
-            _text_element(QUESTION_ELEMENT, question),
-        ]
+    return _with_question(
+        (_document(document_chunks) for document_chunks in _group_by_document(chunks)),
+        question,
     )
 
 
 def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
     """Return each exchange of the conversation as an element, then ``question``."""
+    return _with_question((_exchange(exchange) for exchange in history), question)
+
+
+def _with_question(parts: Iterable[str], question: str) -> str:
+    """Return the prompt made of ``parts``, then ``question`` in its element."""
     return PROMPT_PART_SEPARATOR.join(
-        [
-            *(_exchange(exchange) for exchange in history),
-            _text_element(QUESTION_ELEMENT, question),
-        ]
+        [*parts, _text_element(QUESTION_ELEMENT, question)]
     )
 
 
