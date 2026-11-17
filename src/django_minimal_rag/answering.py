@@ -87,12 +87,13 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     None, without calling the LLM, when no chunk is near enough.
     """
     llm = get_llm()
+    search_question = question
     if history:
-        llm.complete(
+        search_question = llm.complete(
             _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
         )
     chunks = retrieve(
-        question,
+        search_question,
         permissions=permissions,
         max_distance=max_distance,
         limit=limit,
