@@ -27,6 +27,20 @@ ANSWER_INSTRUCTIONS = (
 )
 
 
+REWRITE_INSTRUCTIONS = (
+    "Rewrite the last question so that it can be understood without the "
+    "conversation. Reply with the rewritten question only."
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Exchange:
+    """A question asked earlier in a conversation, and the answer it got."""
+
+    question: str
+    answer: str
+
+
 @dataclass(frozen=True)
 class Citation:
     """The document a retrieved chunk comes from."""
@@ -54,13 +68,14 @@ class Answer:
         return _cite(self.chunks)
 
 
-def answer(
+def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     question: str,
     *,
     permissions: AbstractSet[str],
     max_distance: float,
     limit: int = DEFAULT_LIMIT,
     language: str | None = None,
+    history: Sequence[Exchange] = (),
 ) -> Answer | None:
     """Return the LLM's answer from the at most ``limit`` chunks near ``question``.
 
@@ -69,6 +84,8 @@ def answer(
     None, without calling the LLM, when no chunk is near enough.
     """
     llm = get_llm()
+    if history:
+        llm.complete(question, system=REWRITE_INSTRUCTIONS)
     chunks = retrieve(
         question,
         permissions=permissions,
