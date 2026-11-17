@@ -1013,6 +1013,14 @@ def test_rewrite_instructions_pair_lt_gt_and_amp_and_keep_them_in_the_rewrite() 
     assert missing == []
 
 
+def test_rewrite_instructions_ask_for_a_standalone_question_only() -> None:
+    assert (
+        "Rewrite the question in the <question> element as a question that stands "
+        "on its own, in the language of that question, without answering it, "
+        "and write only that question."
+    ) in REWRITE_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
