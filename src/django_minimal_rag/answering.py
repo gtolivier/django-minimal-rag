@@ -37,7 +37,8 @@ ANSWER_INSTRUCTIONS = (
 
 
 REWRITE_INSTRUCTIONS = (
-    "Rewrite the last question so that it can be understood without the "
+    "Each <exchange> holds a <previous-question> and its <previous-answer>. "
+    "Rewrite the <question> so that it can be understood without the "
     "conversation. Reply with the rewritten question only."
 )
 
