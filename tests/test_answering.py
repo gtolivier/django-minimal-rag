@@ -690,6 +690,52 @@ def test_answer_with_history_asks_the_llm_to_rewrite_the_question_then_to_answer
 
 
 @pytest.mark.django_db
+def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    # The LLM replies this to every prompt, the rewriting one included.
+    rewritten = "When does the shop open on Saturdays?"
+    rewrite_text = "On Saturdays the shop opens at ten."
+    question_text = "And on Saturdays, the market fills the square."
+    # Each chunk is about 0.005 from its own question and about 0.9 from the
+    # other one: beyond max_distance.
+    use_chosen_embeddings(
+        settings,
+        {
+            rewritten: [1.0, 0.0],
+            rewrite_text: [1.0, 0.1],
+            question: [0.0, 1.0],
+            question_text: [0.1, 1.0],
+        },
+    )
+    replace_and_run_on_commit(
+        {
+            "page:1": [public_page(rewrite_text, source_key="page:1")],
+            "page:2": [public_page(question_text, source_key="page:2")],
+        }
+    )
+    llm_calls = use_recording_llm(settings, rewritten)
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    answered = answer(
+        question, permissions=frozenset(), max_distance=0.1, history=history
+    )
+
+    assert answered is not None
+    assert [chunk.text for chunk in answered.chunks] == [rewrite_text]
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == ANSWER_INSTRUCTIONS
+    assert rewrite_text in answer_prompt
+    assert question_text not in answer_prompt
+
+
+@pytest.mark.django_db
 def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question(
     settings: "Settings",
 ) -> None:
