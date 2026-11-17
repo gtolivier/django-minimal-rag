@@ -40,7 +40,10 @@ REWRITE_INSTRUCTIONS = (
     f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
     f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
     f"Rewrite the <{QUESTION_ELEMENT}> so that it can be understood without the "
-    "conversation. Reply with the rewritten question only."
+    "conversation. In the conversation, < is written &lt;, > is written &gt; "
+    "and & is written &amp;; in the rewrite, "
+    "write <, > and & as they are, not escaped. "
+    "Reply with the rewritten question only."
 )
 
 
