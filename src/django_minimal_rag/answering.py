@@ -13,6 +13,9 @@ QUESTION_ELEMENT = "question"
 DOCUMENT_ELEMENT = "document"
 TITLE_ELEMENT = "title"
 EXTRACT_ELEMENT = "extract"
+EXCHANGE_ELEMENT = "exchange"
+PREVIOUS_QUESTION_ELEMENT = "previous-question"
+PREVIOUS_ANSWER_ELEMENT = "previous-answer"
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
     f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
@@ -86,16 +89,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     llm = get_llm()
     if history:
         llm.complete(
-            PROMPT_PART_SEPARATOR.join(
-                [
-                    _opening_tag("exchange"),
-                    _text_element("previous-question", history[0].question),
-                    _text_element("previous-answer", history[0].answer),
-                    _closing_tag("exchange"),
-                    _text_element(QUESTION_ELEMENT, question),
-                ]
-            ),
-            system=REWRITE_INSTRUCTIONS,
+            _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
         )
     chunks = retrieve(
         question,
@@ -131,6 +125,19 @@ def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
             ),
+            _text_element(QUESTION_ELEMENT, question),
+        ]
+    )
+
+
+def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
+    """Return the conversation's exchange as an element, then ``question`` in a tag."""
+    return PROMPT_PART_SEPARATOR.join(
+        [
+            _opening_tag(EXCHANGE_ELEMENT),
+            _text_element(PREVIOUS_QUESTION_ELEMENT, history[0].question),
+            _text_element(PREVIOUS_ANSWER_ELEMENT, history[0].answer),
+            _closing_tag(EXCHANGE_ELEMENT),
             _text_element(QUESTION_ELEMENT, question),
         ]
     )
