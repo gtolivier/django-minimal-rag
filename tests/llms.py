@@ -49,6 +49,16 @@ def use_canned_llm(settings: "Settings", reply: str) -> None:
     }
 
 
+def use_recording_llm(settings: "Settings", reply: str) -> list[tuple[str, str]]:
+    """Configure ``RecordingLLM`` answering ``reply``; return the calls it records."""
+    calls: list[tuple[str, str]] = []
+    settings.MINIMAL_RAG_LLM = {
+        "BACKEND": "tests.llms.RecordingLLM",
+        "OPTIONS": {"calls": calls, "reply": reply},
+    }
+    return calls
+
+
 def remove_llm_setting(settings: "Settings") -> None:
     """Leave the LLM setting missing, whether or not the test settings define it.
 
@@ -61,9 +71,4 @@ def remove_llm_setting(settings: "Settings") -> None:
 @pytest.fixture
 def llm_calls(settings: "Settings") -> list[tuple[str, str]]:
     """Configure ``RecordingLLM`` and return the ``(prompt, system)`` it records."""
-    calls: list[tuple[str, str]] = []
-    settings.MINIMAL_RAG_LLM = {
-        "BACKEND": "tests.llms.RecordingLLM",
-        "OPTIONS": {"calls": calls},
-    }
-    return calls
+    return use_recording_llm(settings, "")

@@ -5,12 +5,18 @@ from typing import TYPE_CHECKING
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-from django_minimal_rag.answering import ANSWER_INSTRUCTIONS, Citation, answer
+from django_minimal_rag.answering import (
+    ANSWER_INSTRUCTIONS,
+    REWRITE_INSTRUCTIONS,
+    Citation,
+    Exchange,
+    answer,
+)
 from django_minimal_rag.retrieval import RetrievedChunk
 from tests.documents import SampleDocument, public_page
 from tests.embeddings import use_chosen_embeddings
 from tests.indexing import replace_and_run_on_commit
-from tests.llms import remove_llm_setting, use_canned_llm
+from tests.llms import remove_llm_setting, use_canned_llm, use_recording_llm
 
 if TYPE_CHECKING:
     from pytest_django import Settings
@@ -651,6 +657,36 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 
     [(_prompt, system)] = llm_calls
     assert system == ANSWER_INSTRUCTIONS
+
+
+@pytest.mark.django_db
+def test_answer_with_history_asks_the_llm_to_rewrite_the_question_then_to_answer(
+    settings: "Settings",
+) -> None:
+    chunk_text = "The shop opens at ten on Saturdays."
+    question = "And on Saturdays?"
+    # The LLM replies this to every prompt, the rewriting one included.
+    rewritten = "When does the shop open on Saturdays?"
+    # Cosine distances of the chunk to either question: about 0.005.
+    use_chosen_embeddings(
+        settings,
+        {chunk_text: [1.0, 0.0], question: [1.0, 0.1], rewritten: [1.0, 0.1]},
+    )
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
+    llm_calls = use_recording_llm(settings, rewritten)
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    answer(question, permissions=frozenset(), max_distance=0.1, history=history)
+
+    assert [system for _prompt, system in llm_calls] == [
+        REWRITE_INSTRUCTIONS,
+        ANSWER_INSTRUCTIONS,
+    ]
 
 
 @pytest.mark.django_db
