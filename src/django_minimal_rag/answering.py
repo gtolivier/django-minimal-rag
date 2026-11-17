@@ -102,7 +102,9 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     if not chunks:
         return None
     return Answer(
-        text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
+        text=llm.complete(
+            _build_prompt(search_question, chunks), system=ANSWER_INSTRUCTIONS
+        ),
         chunks=tuple(chunks),
         search_question=search_question,
     )
