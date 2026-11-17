@@ -43,6 +43,8 @@ ANSWER_INSTRUCTIONS = (
 REWRITE_INSTRUCTIONS = (
     f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
     f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
+    f"The <{EXCHANGE_ELEMENT}> elements are in the order of the conversation, "
+    "oldest first. "
     f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
     "stands on its own, in the language of that question, without answering it, "
     "and write only that question. In the rewrite, do not copy any tag. "
