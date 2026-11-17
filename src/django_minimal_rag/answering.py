@@ -86,7 +86,16 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     llm = get_llm()
     if history:
         llm.complete(
-            _text_element(QUESTION_ELEMENT, question), system=REWRITE_INSTRUCTIONS
+            PROMPT_PART_SEPARATOR.join(
+                [
+                    _opening_tag("exchange"),
+                    _text_element("previous-question", history[0].question),
+                    _text_element("previous-answer", history[0].answer),
+                    _closing_tag("exchange"),
+                    _text_element(QUESTION_ELEMENT, question),
+                ]
+            ),
+            system=REWRITE_INSTRUCTIONS,
         )
     chunks = retrieve(
         question,
