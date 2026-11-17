@@ -423,7 +423,8 @@ result = answer(
         ),
     ],
 )
-result.search_question  # e.g. "When does the shop open on Saturdays?"
+if result is not None:
+    result.search_question  # e.g. "When does the shop open on Saturdays?"
 ```
 
 - With a history, the LLM is first asked to rewrite the question as one
@@ -431,8 +432,8 @@ result.search_question  # e.g. "When does the shop open on Saturdays?"
   answering it. Its prompt holds one `<exchange>` element per exchange, in
   the history's order, each holding its `<previous-question>` then its
   `<previous-answer>`, then the `<question>`; all are escaped as in the
-  answer prompt, and the rewrite instructions say so and tell the LLM not
-  to copy any tag into the rewrite.
+  answer prompt. The rewrite instructions say so, say the exchanges are
+  oldest first, and tell the LLM not to copy any tag into the rewrite.
 - The chunks are then searched near the rewrite, stripped of the
   whitespace around it, and the LLM answers the rewrite. A blank rewrite
   falls back to the question asked. With nothing near the rewrite,
