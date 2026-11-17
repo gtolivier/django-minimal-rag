@@ -710,6 +710,33 @@ def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_rewrite_the_exchange_before_the_question(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    previous_question = "When does the shop open?"
+    previous_answer = "The shop opens at nine on weekdays."
+    llm_calls = use_recording_llm(settings, "When does the shop open on Saturdays?")
+    history = [Exchange(question=previous_question, answer=previous_answer)]
+
+    answer(question, permissions=frozenset(), max_distance=0.1, history=history)
+
+    (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
+    assert rewrite_system == REWRITE_INSTRUCTIONS
+    # The whitespace between tags is not pinned, only the elements and their order.
+    elements = re.sub(r">\s+<", "><", rewrite_prompt)
+    exchange = (
+        "<exchange>"
+        f"<previous-question>{previous_question}</previous-question>"
+        f"<previous-answer>{previous_answer}</previous-answer>"
+        "</exchange>"
+    )
+    question_element = f"<question>{question}</question>"
+    assert exchange in elements
+    assert elements.index(exchange) < elements.index(question_element)
+
+
+@pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
 ) -> None:
