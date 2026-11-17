@@ -1141,6 +1141,41 @@ def test_answer_with_history_and_the_wildcard_language_raises_before_any_llm_cal
 
 
 @pytest.mark.django_db
+def test_answer_with_history_and_a_limit_below_one_raises_before_any_llm_call(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    # The LLM replies this to every prompt, the rewriting one included.
+    rewritten = "When does the shop open on Saturdays?"
+    chunk_text = "On Saturdays the shop opens at ten."
+    # The chunk is about 0.005 from either question, so only the limit keeps
+    # the LLM from being called.
+    use_chosen_embeddings(
+        settings,
+        {chunk_text: [1.0, 0.0], question: [1.0, 0.1], rewritten: [1.0, 0.1]},
+    )
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
+    llm_calls = use_recording_llm(settings, rewritten)
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    with pytest.raises(ValueError, match="limit"):
+        answer(
+            question,
+            permissions=frozenset(),
+            max_distance=1.0,
+            limit=0,
+            history=history,
+        )
+
+    assert llm_calls == []
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("title", "url", "source_key"),
     [
