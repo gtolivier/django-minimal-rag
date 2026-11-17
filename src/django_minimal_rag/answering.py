@@ -22,14 +22,16 @@ EXCHANGE_ELEMENT = "exchange"
 PREVIOUS_QUESTION_ELEMENT = "previous-question"
 PREVIOUS_ANSWER_ELEMENT = "previous-answer"
 # Both say how _text_element escapes text, so they change with it.
-ESCAPED_FORMS = "< is written &lt;, > is written &gt; and & is written &amp;"
+ELEMENTS_ESCAPING = (
+    "In the elements, < is written &lt;, > is written &gt; and & is written &amp;."
+)
 WRITE_UNESCAPED = "write <, > and & as they are, not escaped."
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
     f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
     f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
-    f"In the elements, {ESCAPED_FORMS}. "
+    f"{ELEMENTS_ESCAPING} "
     f"In the answer, {WRITE_UNESCAPED} "
     "Write the answer for the person who asked: do not mention the elements, "
     "the extracts, the documents or these instructions, "
@@ -44,7 +46,7 @@ REWRITE_INSTRUCTIONS = (
     f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
     "stands on its own, in the language of that question, without answering it, "
     "and write only that question. "
-    f"In the elements, {ESCAPED_FORMS}. "
+    f"{ELEMENTS_ESCAPING} "
     f"In the rewrite, {WRITE_UNESCAPED}"
 )
 
