@@ -998,6 +998,21 @@ def test_rewrite_instructions_name_every_element_of_the_rewrite_prompt(
     } == set()
 
 
+def test_rewrite_instructions_pair_lt_gt_and_amp_and_keep_them_in_the_rewrite() -> None:
+    missing = [
+        phrase
+        for phrase in (
+            "< is written &lt;",
+            "> is written &gt;",
+            "& is written &amp;",
+            "write <, > and & as they are, not escaped.",
+        )
+        if phrase not in REWRITE_INSTRUCTIONS
+    ]
+
+    assert missing == []
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
