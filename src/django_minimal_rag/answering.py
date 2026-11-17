@@ -46,6 +46,7 @@ class Answer:
 
     text: str
     chunks: tuple[RetrievedChunk, ...]
+    search_question: str
 
     @property
     def citations(self) -> tuple[Citation, ...]:
@@ -80,6 +81,7 @@ def answer(
     return Answer(
         text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
         chunks=tuple(chunks),
+        search_question=question,
     )
 
 
