@@ -132,16 +132,24 @@ def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
 
 def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
     """Return each exchange of the conversation as an element, then ``question``."""
-    parts: list[str] = []
-    for exchange in history:
-        parts += [
+    return PROMPT_PART_SEPARATOR.join(
+        [
+            *(_exchange(exchange) for exchange in history),
+            _text_element(QUESTION_ELEMENT, question),
+        ]
+    )
+
+
+def _exchange(exchange: Exchange) -> str:
+    """Return one exchange of the conversation: its question, then its answer."""
+    return PROMPT_PART_SEPARATOR.join(
+        [
             _opening_tag(EXCHANGE_ELEMENT),
             _text_element(PREVIOUS_QUESTION_ELEMENT, exchange.question),
             _text_element(PREVIOUS_ANSWER_ELEMENT, exchange.answer),
             _closing_tag(EXCHANGE_ELEMENT),
         ]
-    parts.append(_text_element(QUESTION_ELEMENT, question))
-    return PROMPT_PART_SEPARATOR.join(parts)
+    )
 
 
 def _group_by_document(
