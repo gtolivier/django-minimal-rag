@@ -984,6 +984,13 @@ def test_rewrite_instructions_pair_lt_gt_and_amp_and_keep_them_in_the_rewrite() 
     assert missing == []
 
 
+def test_rewrite_instructions_say_lt_gt_and_amp_are_escaped_in_every_element() -> None:
+    # The <question> element is escaped too, not only the conversation.
+    assert (
+        "In the elements, < is written &lt;, > is written &gt; and & is written &amp;"
+    ) in REWRITE_INSTRUCTIONS
+
+
 def test_rewrite_instructions_ask_for_a_standalone_question_only() -> None:
     assert (
         "Rewrite the question in the <question> element as a question that stands "
