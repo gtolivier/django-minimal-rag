@@ -1037,6 +1037,14 @@ def test_rewrite_instructions_say_not_to_copy_any_tag() -> None:
     assert "do not copy any tag" in REWRITE_INSTRUCTIONS
 
 
+def test_rewrite_instructions_say_the_exchanges_are_oldest_first() -> None:
+    # The order is that of the <exchange> elements, not of the question and
+    # the answer inside one exchange.
+    assert (
+        "The <exchange> elements are in the order of the conversation, oldest first."
+    ) in REWRITE_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
