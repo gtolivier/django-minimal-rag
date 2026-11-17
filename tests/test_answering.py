@@ -736,6 +736,34 @@ def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_answer_call_the_rewritten_question(
+    settings: "Settings",
+) -> None:
+    question = "And on Saturdays?"
+    # The LLM replies this to every prompt, the rewriting one included.
+    rewritten = "When does the shop open on Saturdays?"
+    chunk_text = "On Saturdays the shop opens at ten."
+    # The chunk is about 0.005 from the rewrite, so the answer call happens.
+    use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], rewritten: [1.0, 0.1]})
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
+    llm_calls = use_recording_llm(settings, rewritten)
+    history = [
+        Exchange(
+            question="When does the shop open?",
+            answer="The shop opens at nine on weekdays.",
+        )
+    ]
+
+    answer(question, permissions=frozenset(), max_distance=0.1, history=history)
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == ANSWER_INSTRUCTIONS
+    assert re.findall(r"<question>.*?</question>", answer_prompt) == [
+        f"<question>{rewritten}</question>"
+    ]
+
+
+@pytest.mark.django_db
 def test_answer_with_history_searches_with_the_rewrite_stripped_of_whitespace(
     settings: "Settings",
 ) -> None:
