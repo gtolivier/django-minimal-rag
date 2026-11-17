@@ -91,7 +91,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     if history:
         search_question = llm.complete(
             _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
-        )
+        ).strip()
     chunks = retrieve(
         search_question,
         permissions=permissions,
@@ -104,7 +104,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     return Answer(
         text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
         chunks=tuple(chunks),
-        search_question=question,
+        search_question=search_question,
     )
 
 
