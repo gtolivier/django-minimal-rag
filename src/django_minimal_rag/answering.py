@@ -85,7 +85,9 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     """
     llm = get_llm()
     if history:
-        llm.complete(question, system=REWRITE_INSTRUCTIONS)
+        llm.complete(
+            _text_element(QUESTION_ELEMENT, question), system=REWRITE_INSTRUCTIONS
+        )
     chunks = retrieve(
         question,
         permissions=permissions,
