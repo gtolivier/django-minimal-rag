@@ -999,6 +999,11 @@ def test_rewrite_instructions_ask_for_a_standalone_question_only() -> None:
     ) in REWRITE_INSTRUCTIONS
 
 
+def test_rewrite_instructions_say_not_to_copy_any_tag() -> None:
+    # The rewrite is searched as is: a copied <question> tag would be searched.
+    assert "do not copy any tag" in REWRITE_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
