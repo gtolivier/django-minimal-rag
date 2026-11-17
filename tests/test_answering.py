@@ -24,6 +24,12 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.usefixtures("fake_embeddings")
 
+# The earlier exchange a follow-up question such as "And on Saturdays?" leans on.
+WEEKDAY_HOURS_EXCHANGE = Exchange(
+    question="When does the shop open?",
+    answer="The shop opens at nine on weekdays.",
+)
+
 
 def index_one_chunk_near(
     settings: "Settings", question: str, page: SampleDocument
@@ -128,6 +134,14 @@ def index_week_and_saturday_schedules(
         {week.source_key: week_pages, saturday.source_key: [saturday_page]}
     )
     return week, saturday, (weekday_text, saturday_text, sunday_text)
+
+
+def prompt_elements(prompt: str) -> str:
+    """``prompt`` without the whitespace between its tags.
+
+    The whitespace between tags is not pinned, only the elements and their order.
+    """
+    return re.sub(r">\s+<", "><", prompt)
 
 
 @pytest.mark.django_db
@@ -674,12 +688,7 @@ def test_answer_with_history_asks_the_llm_to_rewrite_the_question_then_to_answer
     )
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     llm_calls = use_recording_llm(settings, rewritten)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answer(question, permissions=frozenset(), max_distance=0.1, history=history)
 
@@ -716,12 +725,7 @@ def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question
         }
     )
     llm_calls = use_recording_llm(settings, rewritten)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answered = answer(
         question, permissions=frozenset(), max_distance=0.1, history=history
@@ -747,12 +751,7 @@ def test_answer_with_history_gives_the_answer_call_the_rewritten_question(
     use_chosen_embeddings(settings, {chunk_text: [1.0, 0.0], rewritten: [1.0, 0.1]})
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     llm_calls = use_recording_llm(settings, rewritten)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answer(question, permissions=frozenset(), max_distance=0.1, history=history)
 
@@ -780,12 +779,7 @@ def test_answer_with_history_searches_with_the_rewrite_stripped_of_whitespace(
     )
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     use_recording_llm(settings, reply)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answered = answer(
         question, permissions=frozenset(), max_distance=0.1, history=history
@@ -816,12 +810,7 @@ def test_answer_with_history_and_a_blank_rewrite_falls_back_to_the_question(
     )
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     use_recording_llm(settings, reply)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answered = answer(
         question, permissions=frozenset(), max_distance=0.1, history=history
@@ -848,12 +837,7 @@ def test_answer_with_history_and_nothing_near_the_rewrite_returns_none_after_it(
     )
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     llm_calls = use_recording_llm(settings, rewritten)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answered = answer(
         question, permissions=frozenset(), max_distance=0.1, history=history
@@ -869,12 +853,7 @@ def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question
 ) -> None:
     question = "And on Saturdays?"
     llm_calls = use_recording_llm(settings, "When does the shop open on Saturdays?")
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answer(question, permissions=frozenset(), max_distance=0.1, history=history)
 
@@ -897,8 +876,7 @@ def test_answer_with_history_gives_the_rewrite_the_exchange_before_the_question(
 
     (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
     assert rewrite_system == REWRITE_INSTRUCTIONS
-    # The whitespace between tags is not pinned, only the elements and their order.
-    elements = re.sub(r">\s+<", "><", rewrite_prompt)
+    elements = prompt_elements(rewrite_prompt)
     exchange = (
         "<exchange>"
         f"<previous-question>{previous_question}</previous-question>"
@@ -931,8 +909,7 @@ def test_answer_with_history_gives_the_rewrite_each_exchange_in_the_history_orde
 
     (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
     assert rewrite_system == REWRITE_INSTRUCTIONS
-    # The whitespace between tags is not pinned, only the elements and their order.
-    elements = re.sub(r">\s+<", "><", rewrite_prompt)
+    elements = prompt_elements(rewrite_prompt)
     assert re.findall(r"<exchange>.*?</exchange>", elements, flags=re.DOTALL) == [
         "<exchange>"
         f"<previous-question>{exchange.question}</previous-question>"
@@ -958,8 +935,7 @@ def test_answer_with_history_gives_the_rewrite_each_exchange_escaped_in_its_elem
 
     (rewrite_prompt, rewrite_system), *_answering_calls = llm_calls
     assert rewrite_system == REWRITE_INSTRUCTIONS
-    # The whitespace between tags is not pinned, only the elements and their order.
-    elements = re.sub(r">\s+<", "><", rewrite_prompt)
+    elements = prompt_elements(rewrite_prompt)
     assert re.findall(r"<exchange>.*?</exchange>", elements, flags=re.DOTALL) == [
         "<exchange>"
         "<previous-question>When are coffee &amp; tea served?</previous-question>"
@@ -975,12 +951,7 @@ def test_rewrite_instructions_name_every_element_of_the_rewrite_prompt(
 ) -> None:
     question = "And on Saturdays?"
     llm_calls = use_recording_llm(settings, "When does the shop open on Saturdays?")
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     answer(question, permissions=frozenset(), max_distance=0.1, history=history)
 
@@ -1173,12 +1144,7 @@ def test_answer_with_history_and_the_wildcard_language_raises_before_any_llm_cal
     )
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     llm_calls = use_recording_llm(settings, rewritten)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     with pytest.raises(ValueError, match="language"):
         answer(
@@ -1208,12 +1174,7 @@ def test_answer_with_history_and_a_limit_below_one_raises_before_any_llm_call(
     )
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
     llm_calls = use_recording_llm(settings, rewritten)
-    history = [
-        Exchange(
-            question="When does the shop open?",
-            answer="The shop opens at nine on weekdays.",
-        )
-    ]
+    history = [WEEKDAY_HOURS_EXCHANGE]
 
     with pytest.raises(ValueError, match="limit"):
         answer(
