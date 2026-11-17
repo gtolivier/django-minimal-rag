@@ -37,8 +37,9 @@ ANSWER_INSTRUCTIONS = (
 
 
 REWRITE_INSTRUCTIONS = (
-    "Each <exchange> holds a <previous-question> and its <previous-answer>. "
-    "Rewrite the <question> so that it can be understood without the "
+    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
+    f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
+    f"Rewrite the <{QUESTION_ELEMENT}> so that it can be understood without the "
     "conversation. Reply with the rewritten question only."
 )
 
