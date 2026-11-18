@@ -59,8 +59,7 @@ def retrieve(
     search every language), if the backend does not return exactly one
     vector for the question, or if that vector is all zeros.
     """
-    _require_positive_limit(limit)
-    _require_well_formed_language(language)
+    require_valid_options(limit=limit, language=language)
     embeddings = get_embeddings()
     question_embedding = _embed_question(question, embeddings)
     chunks = _candidate_chunks(embeddings.model, permissions, language)
@@ -115,6 +114,15 @@ def _distance_to(question_embedding: list[float], model: str) -> Case:
             then=CosineDistance("embedding", question_embedding),
         )
     )
+
+
+def require_valid_options(*, limit: int, language: str | None) -> None:
+    """Raise ``ValueError`` if ``retrieve()`` would refuse ``limit`` or ``language``.
+
+    Lets a caller check them before any costlier step than the search itself.
+    """
+    _require_positive_limit(limit)
+    _require_well_formed_language(language)
 
 
 def _require_positive_limit(limit: int) -> None:

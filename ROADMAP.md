@@ -337,6 +337,12 @@ Each one is settled before the feature that needs its answer.
   already list the sources; the words "elements", "extracts" and
   "documents" are not built from the `*_ELEMENT` constants, and the titles
   and the question are not in the list.
+- **Long conversations:** `answer()` passes the whole `history` it is
+  given to the LLM, and the project bounds it — the last few exchanges,
+  say. Exchanges dropped beyond that bound are lost to the rewrite.
+  Whether the package offers to compact or summarize them instead, and
+  when: once feature 14 puts the history in the answer prompt too, a long
+  history costs on every call.
 
 ## Features
 
@@ -389,6 +395,14 @@ Provisional: the design pass may reorder, split or merge them.
   in the vector query; documents of unknown language are kept, and a
   range that is blank, holds whitespace or is `*` raises `ValueError` (see
   "Decisions").
+- [x] **13. Follow-up questions.** `answer()` takes a `history` of
+  `Exchange`s; with one, the LLM first rewrites the question to stand on
+  its own, in its language, and the chunks are searched near that rewrite,
+  which the `Answer` keeps as `search_question`. The answer prompt holds
+  the rewrite alone.
+- [ ] **14. Conversation history in the answer.** The answer prompt holds
+  the history and the question as asked, beside the chunks found for the
+  rewrite, so the LLM can answer within the conversation.
 
 ## Not planned here
 

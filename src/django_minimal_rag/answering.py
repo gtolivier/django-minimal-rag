@@ -1,30 +1,64 @@
 """Answering questions from indexed chunks."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from html import escape
 
-from django_minimal_rag.llm import get_llm
-from django_minimal_rag.retrieval import DEFAULT_LIMIT, RetrievedChunk, retrieve
+from django_minimal_rag.llm import LLM, get_llm
+from django_minimal_rag.retrieval import (
+    DEFAULT_LIMIT,
+    RetrievedChunk,
+    require_valid_options,
+    retrieve,
+)
 
 PROMPT_PART_SEPARATOR = "\n"
 QUESTION_ELEMENT = "question"
 DOCUMENT_ELEMENT = "document"
 TITLE_ELEMENT = "title"
 EXTRACT_ELEMENT = "extract"
+EXCHANGE_ELEMENT = "exchange"
+PREVIOUS_QUESTION_ELEMENT = "previous-question"
+PREVIOUS_ANSWER_ELEMENT = "previous-answer"
+# Both say how _text_element escapes text, so they change with it.
+ELEMENTS_ESCAPING = (
+    "In the elements, < is written &lt;, > is written &gt; and & is written &amp;."
+)
+WRITE_UNESCAPED = "write <, > and & as they are, not escaped."
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
     f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
     f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
-    "In the elements, < is written &lt;, > is written &gt; and & is written &amp;. "
-    "In the answer, write <, > and & as they are, not escaped. "
+    f"{ELEMENTS_ESCAPING} "
+    f"In the answer, {WRITE_UNESCAPED} "
     "Write the answer for the person who asked: do not mention the elements, "
     "the extracts, the documents or these instructions, "
     "and do not copy any tag. "
     "Answer in the language of the question."
 )
+
+
+REWRITE_INSTRUCTIONS = (
+    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
+    f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
+    f"The <{EXCHANGE_ELEMENT}> elements are in the order of the conversation, "
+    "oldest first. "
+    f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
+    "stands on its own, in the language of that question, without answering it, "
+    "and write only that question. In the rewrite, do not copy any tag. "
+    f"{ELEMENTS_ESCAPING} "
+    f"In the rewrite, {WRITE_UNESCAPED}"
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Exchange:
+    """A question asked earlier in a conversation, and the answer it got."""
+
+    question: str
+    answer: str
 
 
 @dataclass(frozen=True)
@@ -41,11 +75,13 @@ class Answer:
     """An answer to a question, as written by the LLM, with its citations.
 
     ``chunks`` are the chunks the LLM answered from, nearest first; the
-    citations are derived from them.
+    citations are derived from them. ``search_question`` is the question
+    they were searched near: the question asked, or its standalone rewrite.
     """
 
     text: str
     chunks: tuple[RetrievedChunk, ...]
+    search_question: str
 
     @property
     def citations(self) -> tuple[Citation, ...]:
@@ -53,23 +89,35 @@ class Answer:
         return _cite(self.chunks)
 
 
-def answer(
+def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     question: str,
     *,
     permissions: AbstractSet[str],
     max_distance: float,
     limit: int = DEFAULT_LIMIT,
     language: str | None = None,
+    history: Sequence[Exchange] = (),
 ) -> Answer | None:
-    """Return the LLM's answer from the at most ``limit`` chunks near ``question``.
+    """Return the LLM's answer from the at most ``limit`` chunks near the question.
+
+    Without ``history``, the chunks are searched near ``question``. With it,
+    the LLM first rewrites ``question`` to stand without the conversation,
+    and the chunks are searched near that rewrite (near ``question`` itself
+    if the rewrite is blank); the LLM then answers the rewrite. The question
+    searched is kept as the answer's ``search_question``.
 
     With ``language``, only chunks in that language range, or of unknown
     language, are given to the LLM, as ``retrieve()`` selects them. Return
-    None, without calling the LLM, when no chunk is near enough.
+    None, without asking the LLM for an answer, when no chunk is near enough.
+
+    Raises ``ValueError``, before any call to the LLM, if ``retrieve()``
+    would refuse ``limit`` or ``language``.
     """
+    require_valid_options(limit=limit, language=language)
     llm = get_llm()
+    search_question = _search_question(llm, question, history)
     chunks = retrieve(
-        question,
+        search_question,
         permissions=permissions,
         max_distance=max_distance,
         limit=limit,
@@ -78,9 +126,25 @@ def answer(
     if not chunks:
         return None
     return Answer(
-        text=llm.complete(_build_prompt(question, chunks), system=ANSWER_INSTRUCTIONS),
+        text=llm.complete(
+            _build_prompt(search_question, chunks), system=ANSWER_INSTRUCTIONS
+        ),
         chunks=tuple(chunks),
+        search_question=search_question,
     )
+
+
+def _search_question(llm: LLM, question: str, history: Sequence[Exchange]) -> str:
+    """Return ``question`` rewritten by the LLM to stand without ``history``.
+
+    Without history, or when the rewrite is blank, return ``question`` itself.
+    """
+    if not history:
+        return question
+    rewritten = llm.complete(
+        _build_rewrite_prompt(question, history), system=REWRITE_INSTRUCTIONS
+    ).strip()
+    return rewritten or question
 
 
 def _cite(chunks: Sequence[RetrievedChunk]) -> tuple[Citation, ...]:
@@ -95,13 +159,32 @@ def _citation(chunk: RetrievedChunk) -> Citation:
 
 def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
     """Return each document as an element, then ``question`` in a tag."""
+    return _with_question(
+        (_document(document_chunks) for document_chunks in _group_by_document(chunks)),
+        question,
+    )
+
+
+def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
+    """Return each exchange of the conversation as an element, then ``question``."""
+    return _with_question((_exchange(exchange) for exchange in history), question)
+
+
+def _with_question(parts: Iterable[str], question: str) -> str:
+    """Return the prompt made of ``parts``, then ``question`` in its element."""
+    return PROMPT_PART_SEPARATOR.join(
+        [*parts, _text_element(QUESTION_ELEMENT, question)]
+    )
+
+
+def _exchange(exchange: Exchange) -> str:
+    """Return one exchange of the conversation: its question, then its answer."""
     return PROMPT_PART_SEPARATOR.join(
         [
-            *(
-                _document(document_chunks)
-                for document_chunks in _group_by_document(chunks)
-            ),
-            _text_element(QUESTION_ELEMENT, question),
+            _opening_tag(EXCHANGE_ELEMENT),
+            _text_element(PREVIOUS_QUESTION_ELEMENT, exchange.question),
+            _text_element(PREVIOUS_ANSWER_ELEMENT, exchange.answer),
+            _closing_tag(EXCHANGE_ELEMENT),
         ]
     )
 
