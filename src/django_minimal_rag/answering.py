@@ -106,8 +106,8 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     Without ``history``, the chunks are searched near ``question``. With it,
     the LLM first rewrites ``question`` to stand without the conversation,
     and the chunks are searched near that rewrite (near ``question`` itself
-    if the rewrite is blank); the LLM then answers the rewrite. The question
-    searched is kept as the answer's ``search_question``.
+    if the rewrite is blank); the LLM then answers ``question`` as asked. The
+    question searched is kept as the answer's ``search_question``.
 
     With ``language``, only chunks in that language range, or of unknown
     language, are given to the LLM, as ``retrieve()`` selects them. Return
