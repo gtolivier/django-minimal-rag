@@ -31,9 +31,10 @@ EXCHANGE_LAYOUT = (
     f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
     f"and its <{PREVIOUS_ANSWER_ELEMENT}>."
 )
+ANSWER_SOURCES = f"the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements"
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
-    f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
+    f"using only {ANSWER_SOURCES} "
     f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
     f"{ELEMENTS_ESCAPING} "
@@ -51,8 +52,8 @@ CONVERSATION_ANSWER_INSTRUCTIONS = (
     f"{EXCHANGE_LAYOUT} "
     f"The <{EXCHANGE_ELEMENT}> elements are the earlier conversation, oldest first. "
     "The conversation only helps understand the question: the answer still "
-    f"comes only from the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> "
-    f"elements, not from the <{PREVIOUS_ANSWER_ELEMENT}> elements."
+    f"comes only from {ANSWER_SOURCES}, "
+    f"not from the <{PREVIOUS_ANSWER_ELEMENT}> elements."
 )
 
 REWRITE_INSTRUCTIONS = (
@@ -176,16 +177,7 @@ def _build_prompt(
     question: str, chunks: Sequence[RetrievedChunk], history: Sequence[Exchange]
 ) -> str:
     """Return each exchange, then each document as an element, then ``question``."""
-    return _with_question(
-        [
-            *_exchanges(history),
-            *(
-                _document(document_chunks)
-                for document_chunks in _group_by_document(chunks)
-            ),
-        ],
-        question,
-    )
+    return _with_question([*_exchanges(history), *_documents(chunks)], question)
 
 
 def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
@@ -214,6 +206,13 @@ def _exchange(exchange: Exchange) -> str:
             _text_element(PREVIOUS_ANSWER_ELEMENT, exchange.answer),
             _closing_tag(EXCHANGE_ELEMENT),
         ]
+    )
+
+
+def _documents(chunks: Sequence[RetrievedChunk]) -> Iterable[str]:
+    """Return each document as an element, in the order of its nearest chunk."""
+    return (
+        _document(document_chunks) for document_chunks in _group_by_document(chunks)
     )
 
 
