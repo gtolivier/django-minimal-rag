@@ -1215,6 +1215,16 @@ def test_conversation_answer_instructions_say_previous_answers_are_no_source() -
     ) in CONVERSATION_ANSWER_INSTRUCTIONS
 
 
+def test_conversation_answer_instructions_describe_the_question_as_asked() -> None:
+    # The answer prompt holds the question as asked, never its rewrite: the
+    # rewrite only serves the search.
+    assert (
+        "The <question> element holds the latest question of the conversation, "
+        "as asked, to be understood in the light of the <exchange> elements."
+    ) in CONVERSATION_ANSWER_INSTRUCTIONS
+    assert "rewritten" not in CONVERSATION_ANSWER_INSTRUCTIONS.lower()
+
+
 def test_conversation_answer_instructions_keep_the_rules_of_the_answer() -> None:
     # An answer in a conversation is escaped, hides the prompt's structure
     # and follows the language of the question just like a first answer.
