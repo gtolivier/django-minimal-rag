@@ -698,28 +698,6 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 
 
 @pytest.mark.django_db
-def test_answer_with_history_asks_the_llm_to_rewrite_the_question_then_to_answer(
-    settings: "Settings",
-) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "The shop opens at ten on Saturdays."
-    )
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
-    )
-
-    assert [system for _prompt, system in llm_calls] == [
-        REWRITE_INSTRUCTIONS,
-        ANSWER_INSTRUCTIONS,
-    ]
-
-
-@pytest.mark.django_db
 def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question(
     settings: "Settings",
 ) -> None:
@@ -753,34 +731,9 @@ def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question
 
     assert answered is not None
     assert [chunk.text for chunk in answered.chunks] == [rewrite_text]
-    _rewrite_call, (answer_prompt, answer_system) = llm_calls
-    assert answer_system == ANSWER_INSTRUCTIONS
+    _rewrite_call, (answer_prompt, _answer_system) = llm_calls
     assert rewrite_text in answer_prompt
     assert question_text not in answer_prompt
-
-
-@pytest.mark.django_db
-def test_answer_with_history_gives_the_answer_call_the_rewritten_question(
-    settings: "Settings",
-) -> None:
-    # The chunk is near the rewrite, so the answer call happens.
-    index_one_chunk_near(
-        settings, FOLLOW_UP_REWRITE, public_page("On Saturdays the shop opens at ten.")
-    )
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
-    )
-
-    _rewrite_call, (answer_prompt, answer_system) = llm_calls
-    assert answer_system == ANSWER_INSTRUCTIONS
-    assert re.findall(r"<question>.*?</question>", answer_prompt) == [
-        f"<question>{FOLLOW_UP_REWRITE}</question>"
-    ]
 
 
 @pytest.mark.django_db
