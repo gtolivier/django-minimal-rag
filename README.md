@@ -449,9 +449,11 @@ if result is not None:
   the answer prompt.
 - The question the chunks were searched near is the `Answer`'s
   `search_question`: the rewrite with a history, the question asked
-  without one or when the rewrite is blank. A project can show it, or log it to see what was searched.
+  without one or when the rewrite is blank. A project can show it, or log
+  it to see what was searched.
 - The whole history is passed to the LLM, in the rewrite call and, when
-  chunks are found, in the answer call: the project chooses how many exchanges to keep (see "Open questions" in the [roadmap](ROADMAP.md)).
+  chunks are found, in the answer call: the project chooses how many
+  exchanges to keep (see "Open questions" in the [roadmap](ROADMAP.md)).
 - Without a history, `answer()` behaves as before: one call to the LLM,
   and `search_question` is the question asked.
 

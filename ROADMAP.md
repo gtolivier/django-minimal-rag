@@ -415,7 +415,7 @@ Provisional: the design pass may reorder, split or merge them.
   the rewrite alone until feature 14.
 - [x] **14. Conversation history in the answer.** The answer prompt holds
   the history and the question as asked, beside the chunks found for the
-  rewrite, so the LLM can answer within the conversation (see
+  search question, so the LLM can answer within the conversation (see
   "Decisions").
 
 ## Not planned here
