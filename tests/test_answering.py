@@ -1214,6 +1214,38 @@ def test_answer_instructions_name_every_element_of_the_prompt(
     assert {name for name in element_names if f"<{name}>" not in system} == set()
 
 
+@pytest.mark.django_db
+def test_conversation_answer_instructions_name_every_element_of_the_answer_prompt(
+    settings: "Settings",
+) -> None:
+    index_one_chunk_near_the_follow_up_and_its_rewrite(
+        settings, "On Saturdays the shop opens at ten."
+    )
+    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
+
+    answer(
+        FOLLOW_UP_QUESTION,
+        permissions=frozenset(),
+        max_distance=0.1,
+        history=[WEEKDAY_HOURS_EXCHANGE],
+    )
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
+    # The names of the prompt's opening tags; closing tags start with a slash.
+    element_names = set(re.findall(r"<([\w-]+)>", answer_prompt))
+    assert element_names == {
+        "exchange",
+        "previous-question",
+        "previous-answer",
+        "document",
+        "title",
+        "extract",
+        "question",
+    }
+    assert {name for name in element_names if f"<{name}>" not in answer_system} == set()
+
+
 def test_answer_instructions_name_the_question_element() -> None:
     assert "<question>" in ANSWER_INSTRUCTIONS
 
