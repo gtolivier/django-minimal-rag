@@ -865,6 +865,29 @@ def test_answer_with_history_answers_with_the_conversation_answer_instructions(
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_answer_one_question_element_as_asked(
+    settings: "Settings",
+) -> None:
+    index_one_chunk_near_the_follow_up_and_its_rewrite(
+        settings, "On Saturdays the shop opens at ten."
+    )
+    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
+
+    answer(
+        FOLLOW_UP_QUESTION,
+        permissions=frozenset(),
+        max_distance=0.1,
+        history=[WEEKDAY_HOURS_EXCHANGE],
+    )
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
+    assert re.findall(r"<question>.*?</question>", answer_prompt, flags=re.DOTALL) == [
+        f"<question>{FOLLOW_UP_QUESTION}</question>"
+    ]
+
+
+@pytest.mark.django_db
 def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question(
     settings: "Settings",
 ) -> None:
