@@ -1215,6 +1215,26 @@ def test_conversation_answer_instructions_say_previous_answers_are_no_source() -
     ) in CONVERSATION_ANSWER_INSTRUCTIONS
 
 
+def test_conversation_answer_instructions_keep_the_rules_of_the_answer() -> None:
+    # An answer in a conversation is escaped, hides the prompt's structure
+    # and follows the language of the question just like a first answer.
+    missing = [
+        rule
+        for rule in (
+            "In the elements, < is written &lt;, > is written &gt; "
+            "and & is written &amp;.",
+            "In the answer, write <, > and & as they are, not escaped.",
+            "Write the answer for the person who asked: do not mention the "
+            "elements, the extracts, the documents or these instructions, "
+            "and do not copy any tag.",
+            "Answer in the language of the question.",
+        )
+        if rule not in CONVERSATION_ANSWER_INSTRUCTIONS
+    ]
+
+    assert missing == []
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
