@@ -9,6 +9,7 @@ from django_minimal_rag.answering import (
     ANSWER_INSTRUCTIONS,
     CONVERSATION_ANSWER_INSTRUCTIONS,
     REWRITE_INSTRUCTIONS,
+    Answer,
     Citation,
     Exchange,
     answer,
@@ -83,6 +84,40 @@ def llm_calls_answering_the_follow_up(
     )
 
     return llm_calls
+
+
+def answer_the_follow_up_after_a_blank_rewrite(
+    settings: "Settings", chunk_text: str
+) -> tuple[Answer | None, list[tuple[str, str]]]:
+    """Answer FOLLOW_UP_QUESTION after WEEKDAY_HOURS_EXCHANGE, the LLM replying blank.
+
+    One public page of ``chunk_text`` is indexed as one chunk. The LLM replies
+    a blank text to every prompt, the rewriting one included. Return the
+    answer and the LLM calls: the rewrite call, then the answer call.
+    """
+    reply = "  \n "
+    # The chunk is about 0.005 from the question, and orthogonal to the
+    # blank reply, stripped or not: beyond max_distance.
+    use_chosen_embeddings(
+        settings,
+        {
+            chunk_text: [1.0, 0.0],
+            FOLLOW_UP_QUESTION: [1.0, 0.1],
+            reply: [0.0, 1.0],
+            "": [0.0, 1.0],
+        },
+    )
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
+    llm_calls = use_recording_llm(settings, reply)
+
+    answered = answer(
+        FOLLOW_UP_QUESTION,
+        permissions=frozenset(),
+        max_distance=0.1,
+        history=[WEEKDAY_HOURS_EXCHANGE],
+    )
+
+    return answered, llm_calls
 
 
 def prompt_answering_from_one_titled_chunk(
@@ -804,28 +839,10 @@ def test_answer_with_history_searches_with_the_rewrite_stripped_of_whitespace(
 def test_answer_with_history_and_a_blank_rewrite_falls_back_to_the_question(
     settings: "Settings",
 ) -> None:
-    # The LLM replies this to every prompt, the rewriting one included.
-    reply = "  \n "
     chunk_text = "On Saturdays the shop opens at ten."
-    # The chunk is about 0.005 from the question, and orthogonal to the
-    # blank reply, stripped or not: beyond max_distance.
-    use_chosen_embeddings(
-        settings,
-        {
-            chunk_text: [1.0, 0.0],
-            FOLLOW_UP_QUESTION: [1.0, 0.1],
-            reply: [0.0, 1.0],
-            "": [0.0, 1.0],
-        },
-    )
-    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
-    use_recording_llm(settings, reply)
 
-    answered = answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
+    answered, _llm_calls = answer_the_follow_up_after_a_blank_rewrite(
+        settings, chunk_text
     )
 
     assert answered is not None
@@ -837,28 +854,8 @@ def test_answer_with_history_and_a_blank_rewrite_falls_back_to_the_question(
 def test_answer_with_history_and_a_blank_rewrite_answers_with_history_and_question(
     settings: "Settings",
 ) -> None:
-    # The LLM replies this to every prompt, the rewriting one included.
-    reply = "  \n "
-    chunk_text = "On Saturdays the shop opens at ten."
-    # The chunk is about 0.005 from the question, and orthogonal to the
-    # blank reply, stripped or not: beyond max_distance.
-    use_chosen_embeddings(
-        settings,
-        {
-            chunk_text: [1.0, 0.0],
-            FOLLOW_UP_QUESTION: [1.0, 0.1],
-            reply: [0.0, 1.0],
-            "": [0.0, 1.0],
-        },
-    )
-    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
-    llm_calls = use_recording_llm(settings, reply)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
+    _answered, llm_calls = answer_the_follow_up_after_a_blank_rewrite(
+        settings, "On Saturdays the shop opens at ten."
     )
 
     _rewrite_call, (answer_prompt, answer_system) = llm_calls
