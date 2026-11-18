@@ -1205,6 +1205,16 @@ def test_conversation_answer_instructions_say_the_exchanges_are_oldest_first() -
     ) in CONVERSATION_ANSWER_INSTRUCTIONS
 
 
+def test_conversation_answer_instructions_say_previous_answers_are_no_source() -> None:
+    # A previous answer may be wrong or come from extracts the reader no
+    # longer sees: the conversation only clarifies the question.
+    assert (
+        "The conversation only helps understand the question: the answer still "
+        "comes only from the <extract> elements and the <title> elements, "
+        "not from the <previous-answer> elements."
+    ) in CONVERSATION_ANSWER_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
