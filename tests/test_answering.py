@@ -917,6 +917,38 @@ def test_answer_with_history_gives_the_answer_the_exchange_before_the_documents(
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_answer_each_exchange_in_the_history_order(
+    settings: "Settings",
+) -> None:
+    index_one_chunk_near_the_follow_up_and_its_rewrite(
+        settings, "On Saturdays the shop opens at ten."
+    )
+    history = [
+        Exchange(
+            question="Where is the shop?",
+            answer="The shop is on the market square.",
+        ),
+        WEEKDAY_HOURS_EXCHANGE,
+    ]
+    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
+
+    answer(
+        FOLLOW_UP_QUESTION, permissions=frozenset(), max_distance=0.1, history=history
+    )
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
+    elements = prompt_elements(answer_prompt)
+    assert re.findall(r"<exchange>.*?</exchange>", elements, flags=re.DOTALL) == [
+        "<exchange>"
+        f"<previous-question>{exchange.question}</previous-question>"
+        f"<previous-answer>{exchange.answer}</previous-answer>"
+        "</exchange>"
+        for exchange in history
+    ]
+
+
+@pytest.mark.django_db
 def test_answer_with_history_gives_the_rewrite_a_prompt_ending_with_the_question(
     settings: "Settings",
 ) -> None:
