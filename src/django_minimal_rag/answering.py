@@ -26,6 +26,11 @@ ELEMENTS_ESCAPING = (
     "In the elements, < is written &lt;, > is written &gt; and & is written &amp;."
 )
 WRITE_UNESCAPED = "write <, > and & as they are, not escaped."
+# Says how _exchange lays out an exchange, so it changes with it.
+EXCHANGE_LAYOUT = (
+    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
+    f"and its <{PREVIOUS_ANSWER_ELEMENT}>."
+)
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
     f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
@@ -41,13 +46,11 @@ ANSWER_INSTRUCTIONS = (
 CONVERSATION_ANSWER_INSTRUCTIONS = (
     f"{ANSWER_INSTRUCTIONS} "
     "The question was rewritten from a conversation: answer the rewritten question. "
-    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
-    f"and its <{PREVIOUS_ANSWER_ELEMENT}>."
+    f"{EXCHANGE_LAYOUT}"
 )
 
 REWRITE_INSTRUCTIONS = (
-    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
-    f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
+    f"{EXCHANGE_LAYOUT} "
     f"The <{EXCHANGE_ELEMENT}> elements are in the order of the conversation, "
     "oldest first. "
     f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
