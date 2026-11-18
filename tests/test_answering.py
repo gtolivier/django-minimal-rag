@@ -947,6 +947,20 @@ def test_answer_with_history_gives_the_answer_the_exchange_before_the_documents(
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_answer_a_prompt_ending_with_the_question(
+    settings: "Settings",
+) -> None:
+    llm_calls = llm_calls_answering_the_follow_up(settings, [WEEKDAY_HOURS_EXCHANGE])
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
+    elements = prompt_elements(answer_prompt)
+    question_element = f"<question>{FOLLOW_UP_QUESTION}</question>"
+    assert elements.endswith(question_element)
+    assert elements.rindex("</document>") < elements.index(question_element)
+
+
+@pytest.mark.django_db
 def test_answer_with_history_gives_the_answer_each_exchange_in_the_history_order(
     settings: "Settings",
 ) -> None:
