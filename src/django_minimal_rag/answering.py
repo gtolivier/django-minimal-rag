@@ -130,7 +130,7 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
         return None
     instructions = CONVERSATION_ANSWER_INSTRUCTIONS if history else ANSWER_INSTRUCTIONS
     return Answer(
-        text=llm.complete(_build_prompt(search_question, chunks), system=instructions),
+        text=llm.complete(_build_prompt(question, chunks), system=instructions),
         chunks=tuple(chunks),
         search_question=search_question,
     )
