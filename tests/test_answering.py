@@ -1197,6 +1197,14 @@ def test_rewrite_instructions_say_the_exchanges_are_oldest_first() -> None:
     ) in REWRITE_INSTRUCTIONS
 
 
+def test_conversation_answer_instructions_say_the_exchanges_are_oldest_first() -> None:
+    # The order is that of the <exchange> elements, not of the question and
+    # the answer inside one exchange.
+    assert (
+        "The <exchange> elements are the earlier conversation, oldest first."
+    ) in CONVERSATION_ANSWER_INSTRUCTIONS
+
+
 @pytest.mark.django_db
 def test_answer_instructions_name_every_element_of_the_prompt(
     settings: "Settings", llm_calls: list[tuple[str, str]]
