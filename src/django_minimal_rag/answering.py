@@ -167,7 +167,7 @@ def _build_prompt(
     """Return each exchange, then each document as an element, then ``question``."""
     return _with_question(
         [
-            *(_exchange(exchange) for exchange in history),
+            *_exchanges(history),
             *(
                 _document(document_chunks)
                 for document_chunks in _group_by_document(chunks)
@@ -179,7 +179,7 @@ def _build_prompt(
 
 def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
     """Return each exchange of the conversation as an element, then ``question``."""
-    return _with_question((_exchange(exchange) for exchange in history), question)
+    return _with_question(_exchanges(history), question)
 
 
 def _with_question(parts: Iterable[str], question: str) -> str:
@@ -187,6 +187,11 @@ def _with_question(parts: Iterable[str], question: str) -> str:
     return PROMPT_PART_SEPARATOR.join(
         [*parts, _text_element(QUESTION_ELEMENT, question)]
     )
+
+
+def _exchanges(history: Sequence[Exchange]) -> Iterable[str]:
+    """Return each exchange of the conversation as an element, oldest first."""
+    return (_exchange(exchange) for exchange in history)
 
 
 def _exchange(exchange: Exchange) -> str:
