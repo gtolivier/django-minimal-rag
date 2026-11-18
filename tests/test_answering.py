@@ -813,6 +813,48 @@ def test_answer_with_history_and_a_blank_rewrite_falls_back_to_the_question(
 
 
 @pytest.mark.django_db
+def test_answer_with_history_and_a_blank_rewrite_answers_with_history_and_question(
+    settings: "Settings",
+) -> None:
+    # The LLM replies this to every prompt, the rewriting one included.
+    reply = "  \n "
+    chunk_text = "On Saturdays the shop opens at ten."
+    # The chunk is about 0.005 from the question, and orthogonal to the
+    # blank reply, stripped or not: beyond max_distance.
+    use_chosen_embeddings(
+        settings,
+        {
+            chunk_text: [1.0, 0.0],
+            FOLLOW_UP_QUESTION: [1.0, 0.1],
+            reply: [0.0, 1.0],
+            "": [0.0, 1.0],
+        },
+    )
+    replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
+    llm_calls = use_recording_llm(settings, reply)
+
+    answer(
+        FOLLOW_UP_QUESTION,
+        permissions=frozenset(),
+        max_distance=0.1,
+        history=[WEEKDAY_HOURS_EXCHANGE],
+    )
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
+    elements = prompt_elements(answer_prompt)
+    assert re.findall(r"<exchange>.*?</exchange>", elements, flags=re.DOTALL) == [
+        "<exchange>"
+        f"<previous-question>{WEEKDAY_HOURS_EXCHANGE.question}</previous-question>"
+        f"<previous-answer>{WEEKDAY_HOURS_EXCHANGE.answer}</previous-answer>"
+        "</exchange>"
+    ]
+    assert re.findall(r"<question>.*?</question>", elements, flags=re.DOTALL) == [
+        f"<question>{FOLLOW_UP_QUESTION}</question>"
+    ]
+
+
+@pytest.mark.django_db
 def test_answer_with_history_and_nothing_near_the_rewrite_returns_none_after_it(
     settings: "Settings",
 ) -> None:
