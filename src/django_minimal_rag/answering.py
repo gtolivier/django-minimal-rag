@@ -130,7 +130,9 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
         return None
     instructions = CONVERSATION_ANSWER_INSTRUCTIONS if history else ANSWER_INSTRUCTIONS
     return Answer(
-        text=llm.complete(_build_prompt(question, chunks), system=instructions),
+        text=llm.complete(
+            _build_prompt(question, chunks, history), system=instructions
+        ),
         chunks=tuple(chunks),
         search_question=search_question,
     )
@@ -159,10 +161,18 @@ def _citation(chunk: RetrievedChunk) -> Citation:
     return Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
 
 
-def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
-    """Return each document as an element, then ``question`` in a tag."""
+def _build_prompt(
+    question: str, chunks: Sequence[RetrievedChunk], history: Sequence[Exchange]
+) -> str:
+    """Return each exchange, then each document as an element, then ``question``."""
     return _with_question(
-        (_document(document_chunks) for document_chunks in _group_by_document(chunks)),
+        [
+            *(_exchange(exchange) for exchange in history),
+            *(
+                _document(document_chunks)
+                for document_chunks in _group_by_document(chunks)
+            ),
+        ],
         question,
     )
 
