@@ -7,6 +7,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 from django_minimal_rag.answering import (
     ANSWER_INSTRUCTIONS,
+    CONVERSATION_ANSWER_INSTRUCTIONS,
     REWRITE_INSTRUCTIONS,
     Citation,
     Exchange,
@@ -838,6 +839,29 @@ def test_answer_with_history_and_nothing_near_the_rewrite_returns_none_after_it(
 
     assert answered is None
     assert [system for _prompt, system in llm_calls] == [REWRITE_INSTRUCTIONS]
+
+
+@pytest.mark.django_db
+def test_answer_with_history_answers_with_the_conversation_answer_instructions(
+    settings: "Settings",
+) -> None:
+    index_one_chunk_near_the_follow_up_and_its_rewrite(
+        settings, "On Saturdays the shop opens at ten."
+    )
+    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
+
+    answer(
+        FOLLOW_UP_QUESTION,
+        permissions=frozenset(),
+        max_distance=0.1,
+        history=[WEEKDAY_HOURS_EXCHANGE],
+    )
+
+    assert CONVERSATION_ANSWER_INSTRUCTIONS != ANSWER_INSTRUCTIONS
+    assert [system for _prompt, system in llm_calls] == [
+        REWRITE_INSTRUCTIONS,
+        CONVERSATION_ANSWER_INSTRUCTIONS,
+    ]
 
 
 @pytest.mark.django_db
