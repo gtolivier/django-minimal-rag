@@ -45,7 +45,9 @@ ANSWER_INSTRUCTIONS = (
 )
 CONVERSATION_ANSWER_INSTRUCTIONS = (
     f"{ANSWER_INSTRUCTIONS} "
-    "The question was rewritten from a conversation: answer the rewritten question. "
+    f"The <{QUESTION_ELEMENT}> element holds the latest question of the "
+    "conversation, as asked, to be understood in the light of the "
+    f"<{EXCHANGE_ELEMENT}> elements. "
     f"{EXCHANGE_LAYOUT} "
     f"The <{EXCHANGE_ELEMENT}> elements are the earlier conversation, oldest first. "
     "The conversation only helps understand the question: the answer still "
