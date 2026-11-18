@@ -435,14 +435,23 @@ if result is not None:
   answer prompt. The rewrite instructions say so, say the exchanges are
   oldest first, and tell the LLM not to copy any tag into the rewrite.
 - The chunks are then searched near the rewrite, stripped of the
-  whitespace around it, and the LLM answers the rewrite. A blank rewrite
-  falls back to the question asked. With nothing near the rewrite,
-  `answer()` returns `None` after the rewrite call alone.
+  whitespace around it. A blank rewrite falls back to the question asked.
+  With nothing near the rewrite, `answer()` returns `None` after the
+  rewrite call alone.
+- The LLM then answers within the conversation. The answer prompt holds
+  the same `<exchange>` elements, then the `<document>` elements of the
+  chunks found, then the `<question>` as asked — not the rewrite, which
+  serves the search alone. Its system prompt is the answer's, plus a few
+  sentences: the `<question>` is the latest question of the conversation,
+  to be understood in the light of the exchanges, which are oldest first,
+  and the answer still comes only from the extracts and titles, never
+  from a `<previous-answer>`. A test checks that it names every element of
+  the answer prompt.
 - The question the chunks were searched near is the `Answer`'s
   `search_question`: the question asked without a history, the rewrite
   with one. A project can show it, or log it to see what was searched.
-- The whole history is passed to the LLM: the project chooses how many
-  exchanges to keep (see "Open questions" in the [roadmap](ROADMAP.md)).
+- The whole history is passed to the LLM, in both calls: the project
+  chooses how many exchanges to keep (see "Open questions" in the [roadmap](ROADMAP.md)).
 - Without a history, `answer()` behaves as before: one call to the LLM,
   and `search_question` is the question asked.
 
