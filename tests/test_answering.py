@@ -698,6 +698,21 @@ def test_answer_gives_the_llm_the_answer_instructions_as_system_prompt(
 
 
 @pytest.mark.django_db
+def test_answer_without_history_gives_the_llm_a_prompt_without_exchange_element(
+    settings: "Settings", llm_calls: list[tuple[str, str]]
+) -> None:
+    chunk_text = "The shop opens at nine on weekdays."
+    question = "When does the shop open?"
+    index_one_chunk_near(settings, question, public_page(chunk_text))
+
+    answer(question, permissions=frozenset(), max_distance=0.1)
+
+    [(prompt, system)] = llm_calls
+    assert system == ANSWER_INSTRUCTIONS
+    assert "<exchange>" not in prompt
+
+
+@pytest.mark.django_db
 def test_answer_with_history_answers_from_the_chunks_near_the_rewritten_question(
     settings: "Settings",
 ) -> None:
