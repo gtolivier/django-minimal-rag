@@ -40,7 +40,9 @@ ANSWER_INSTRUCTIONS = (
 )
 CONVERSATION_ANSWER_INSTRUCTIONS = (
     f"{ANSWER_INSTRUCTIONS} "
-    "The question was rewritten from a conversation: answer the rewritten question."
+    "The question was rewritten from a conversation: answer the rewritten question. "
+    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
+    f"and its <{PREVIOUS_ANSWER_ELEMENT}>."
 )
 
 REWRITE_INSTRUCTIONS = (
