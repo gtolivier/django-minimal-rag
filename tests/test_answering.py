@@ -64,6 +64,27 @@ def index_one_chunk_near_the_follow_up_and_its_rewrite(
     replace_and_run_on_commit({"page:1": [public_page(chunk_text)]})
 
 
+def llm_calls_answering_the_follow_up(
+    settings: "Settings", history: list[Exchange]
+) -> list[tuple[str, str]]:
+    """The LLM calls of answering FOLLOW_UP_QUESTION after ``history``.
+
+    One chunk is indexed near the follow-up and its rewrite, and the LLM
+    replies FOLLOW_UP_REWRITE to every prompt: the rewrite call, then the
+    answer call.
+    """
+    index_one_chunk_near_the_follow_up_and_its_rewrite(
+        settings, "On Saturdays the shop opens at ten."
+    )
+    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
+
+    answer(
+        FOLLOW_UP_QUESTION, permissions=frozenset(), max_distance=0.1, history=history
+    )
+
+    return llm_calls
+
+
 def prompt_answering_from_one_titled_chunk(
     settings: "Settings",
     llm_calls: list[tuple[str, str]],
@@ -887,17 +908,7 @@ def test_answer_with_history_and_nothing_near_the_rewrite_returns_none_after_it(
 def test_answer_with_history_answers_with_the_conversation_answer_instructions(
     settings: "Settings",
 ) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "On Saturdays the shop opens at ten."
-    )
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
-    )
+    llm_calls = llm_calls_answering_the_follow_up(settings, [WEEKDAY_HOURS_EXCHANGE])
 
     assert CONVERSATION_ANSWER_INSTRUCTIONS != ANSWER_INSTRUCTIONS
     assert [system for _prompt, system in llm_calls] == [
@@ -910,17 +921,7 @@ def test_answer_with_history_answers_with_the_conversation_answer_instructions(
 def test_answer_with_history_gives_the_answer_one_question_element_as_asked(
     settings: "Settings",
 ) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "On Saturdays the shop opens at ten."
-    )
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
-    )
+    llm_calls = llm_calls_answering_the_follow_up(settings, [WEEKDAY_HOURS_EXCHANGE])
 
     _rewrite_call, (answer_prompt, answer_system) = llm_calls
     assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
@@ -933,17 +934,7 @@ def test_answer_with_history_gives_the_answer_one_question_element_as_asked(
 def test_answer_with_history_gives_the_answer_the_exchange_before_the_documents(
     settings: "Settings",
 ) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "On Saturdays the shop opens at ten."
-    )
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
-    )
+    llm_calls = llm_calls_answering_the_follow_up(settings, [WEEKDAY_HOURS_EXCHANGE])
 
     _rewrite_call, (answer_prompt, answer_system) = llm_calls
     assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
@@ -962,9 +953,6 @@ def test_answer_with_history_gives_the_answer_the_exchange_before_the_documents(
 def test_answer_with_history_gives_the_answer_each_exchange_in_the_history_order(
     settings: "Settings",
 ) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "On Saturdays the shop opens at ten."
-    )
     history = [
         Exchange(
             question="Where is the shop?",
@@ -972,11 +960,8 @@ def test_answer_with_history_gives_the_answer_each_exchange_in_the_history_order
         ),
         WEEKDAY_HOURS_EXCHANGE,
     ]
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
 
-    answer(
-        FOLLOW_UP_QUESTION, permissions=frozenset(), max_distance=0.1, history=history
-    )
+    llm_calls = llm_calls_answering_the_follow_up(settings, history)
 
     _rewrite_call, (answer_prompt, answer_system) = llm_calls
     assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
@@ -994,9 +979,6 @@ def test_answer_with_history_gives_the_answer_each_exchange_in_the_history_order
 def test_answer_with_history_gives_the_answer_each_exchange_escaped_in_its_elements(
     settings: "Settings",
 ) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "On Saturdays the shop opens at ten."
-    )
     history = [
         Exchange(
             question="When are coffee & tea served?",
@@ -1006,11 +988,8 @@ def test_answer_with_history_gives_the_answer_each_exchange_escaped_in_its_eleme
             ),
         )
     ]
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
 
-    answer(
-        FOLLOW_UP_QUESTION, permissions=frozenset(), max_distance=0.1, history=history
-    )
+    llm_calls = llm_calls_answering_the_follow_up(settings, history)
 
     _rewrite_call, (answer_prompt, answer_system) = llm_calls
     assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
@@ -1266,17 +1245,7 @@ def test_answer_instructions_name_every_element_of_the_prompt(
 def test_conversation_answer_instructions_name_every_element_of_the_answer_prompt(
     settings: "Settings",
 ) -> None:
-    index_one_chunk_near_the_follow_up_and_its_rewrite(
-        settings, "On Saturdays the shop opens at ten."
-    )
-    llm_calls = use_recording_llm(settings, FOLLOW_UP_REWRITE)
-
-    answer(
-        FOLLOW_UP_QUESTION,
-        permissions=frozenset(),
-        max_distance=0.1,
-        history=[WEEKDAY_HOURS_EXCHANGE],
-    )
+    llm_calls = llm_calls_answering_the_follow_up(settings, [WEEKDAY_HOURS_EXCHANGE])
 
     _rewrite_call, (answer_prompt, answer_system) = llm_calls
     assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
