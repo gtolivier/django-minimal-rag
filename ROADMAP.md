@@ -355,7 +355,7 @@ Each one is settled before the feature that needs its answer.
   say. Exchanges dropped beyond that bound are lost to the rewrite.
   Whether the package offers to compact or summarize them instead, and
   when: since feature 14 the history is in the answer prompt too, so a
-  long history costs twice on every question.
+  long history costs twice on every question that finds chunks.
 
 ## Features
 
