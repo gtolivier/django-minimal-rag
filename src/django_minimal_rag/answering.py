@@ -46,7 +46,8 @@ ANSWER_INSTRUCTIONS = (
 CONVERSATION_ANSWER_INSTRUCTIONS = (
     f"{ANSWER_INSTRUCTIONS} "
     "The question was rewritten from a conversation: answer the rewritten question. "
-    f"{EXCHANGE_LAYOUT}"
+    f"{EXCHANGE_LAYOUT} "
+    f"The <{EXCHANGE_ELEMENT}> elements are the earlier conversation, oldest first."
 )
 
 REWRITE_INSTRUCTIONS = (
