@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from html import escape
+from itertools import chain
 
 from django_minimal_rag.llm import LLM, get_llm
 from django_minimal_rag.retrieval import (
@@ -26,9 +27,15 @@ ELEMENTS_ESCAPING = (
     "In the elements, < is written &lt;, > is written &gt; and & is written &amp;."
 )
 WRITE_UNESCAPED = "write <, > and & as they are, not escaped."
+# Says how _exchange lays out an exchange, so it changes with it.
+EXCHANGE_LAYOUT = (
+    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
+    f"and its <{PREVIOUS_ANSWER_ELEMENT}>."
+)
+ANSWER_SOURCES = f"the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements"
 ANSWER_INSTRUCTIONS = (
     f"Answer the question in the <{QUESTION_ELEMENT}> element "
-    f"using only the <{EXTRACT_ELEMENT}> elements and the <{TITLE_ELEMENT}> elements "
+    f"using only {ANSWER_SOURCES} "
     f"in the <{DOCUMENT_ELEMENT}> elements. "
     "If they do not contain the answer, say so. "
     f"{ELEMENTS_ESCAPING} "
@@ -38,11 +45,20 @@ ANSWER_INSTRUCTIONS = (
     "and do not copy any tag. "
     "Answer in the language of the question."
 )
-
+CONVERSATION_ANSWER_INSTRUCTIONS = (
+    f"{ANSWER_INSTRUCTIONS} "
+    f"The <{QUESTION_ELEMENT}> element holds the latest question of the "
+    "conversation, as asked, to be understood in the light of the "
+    f"<{EXCHANGE_ELEMENT}> elements. "
+    f"{EXCHANGE_LAYOUT} "
+    f"The <{EXCHANGE_ELEMENT}> elements are the earlier conversation, oldest first. "
+    "The conversation only helps understand the question: the answer still "
+    f"comes only from {ANSWER_SOURCES}, "
+    f"not from the <{PREVIOUS_ANSWER_ELEMENT}> elements."
+)
 
 REWRITE_INSTRUCTIONS = (
-    f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
-    f"and its <{PREVIOUS_ANSWER_ELEMENT}>. "
+    f"{EXCHANGE_LAYOUT} "
     f"The <{EXCHANGE_ELEMENT}> elements are in the order of the conversation, "
     "oldest first. "
     f"Rewrite the question in the <{QUESTION_ELEMENT}> element as a question that "
@@ -103,8 +119,8 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     Without ``history``, the chunks are searched near ``question``. With it,
     the LLM first rewrites ``question`` to stand without the conversation,
     and the chunks are searched near that rewrite (near ``question`` itself
-    if the rewrite is blank); the LLM then answers the rewrite. The question
-    searched is kept as the answer's ``search_question``.
+    if the rewrite is blank); the LLM then answers ``question`` as asked. The
+    question searched is kept as the answer's ``search_question``.
 
     With ``language``, only chunks in that language range, or of unknown
     language, are given to the LLM, as ``retrieve()`` selects them. Return
@@ -125,10 +141,9 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     )
     if not chunks:
         return None
+    prompt, instructions = _answer_request(question, chunks, history)
     return Answer(
-        text=llm.complete(
-            _build_prompt(search_question, chunks), system=ANSWER_INSTRUCTIONS
-        ),
+        text=llm.complete(prompt, system=instructions),
         chunks=tuple(chunks),
         search_question=search_question,
     )
@@ -157,17 +172,27 @@ def _citation(chunk: RetrievedChunk) -> Citation:
     return Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
 
 
-def _build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
-    """Return each document as an element, then ``question`` in a tag."""
-    return _with_question(
-        (_document(document_chunks) for document_chunks in _group_by_document(chunks)),
-        question,
-    )
+def _answer_request(
+    question: str, chunks: Sequence[RetrievedChunk], history: Sequence[Exchange]
+) -> tuple[str, str]:
+    """Return the answer call's prompt and the instructions that describe it.
+
+    Both are chosen together, so the instructions always match the prompt.
+    """
+    instructions = CONVERSATION_ANSWER_INSTRUCTIONS if history else ANSWER_INSTRUCTIONS
+    return _build_prompt(question, chunks, history), instructions
+
+
+def _build_prompt(
+    question: str, chunks: Sequence[RetrievedChunk], history: Sequence[Exchange]
+) -> str:
+    """Return each exchange, then each document as an element, then ``question``."""
+    return _with_question(chain(_exchanges(history), _documents(chunks)), question)
 
 
 def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
     """Return each exchange of the conversation as an element, then ``question``."""
-    return _with_question((_exchange(exchange) for exchange in history), question)
+    return _with_question(_exchanges(history), question)
 
 
 def _with_question(parts: Iterable[str], question: str) -> str:
@@ -175,6 +200,11 @@ def _with_question(parts: Iterable[str], question: str) -> str:
     return PROMPT_PART_SEPARATOR.join(
         [*parts, _text_element(QUESTION_ELEMENT, question)]
     )
+
+
+def _exchanges(history: Sequence[Exchange]) -> Iterable[str]:
+    """Return each exchange of the conversation as an element, oldest first."""
+    return (_exchange(exchange) for exchange in history)
 
 
 def _exchange(exchange: Exchange) -> str:
@@ -186,6 +216,13 @@ def _exchange(exchange: Exchange) -> str:
             _text_element(PREVIOUS_ANSWER_ELEMENT, exchange.answer),
             _closing_tag(EXCHANGE_ELEMENT),
         ]
+    )
+
+
+def _documents(chunks: Sequence[RetrievedChunk]) -> Iterable[str]:
+    """Return each document as an element, in the order of its nearest chunk."""
+    return (
+        _document(document_chunks) for document_chunks in _group_by_document(chunks)
     )
 
 

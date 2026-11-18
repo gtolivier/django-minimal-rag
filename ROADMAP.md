@@ -308,6 +308,19 @@ implements.
   them again. It stores only `text` and `chunks`: `citations` is derived
   from the chunks, so a hand-built `Answer` cannot cite documents its
   chunks do not come from.
+- **With a history, the rewrite searches and the question is answered.**
+  The rewrite of a follow-up question serves the search, and is kept as
+  the `Answer`'s `search_question`; it never reaches the answer prompt.
+  That prompt holds the `<exchange>` elements, oldest first, then the
+  `<document>` elements, then the `<question>` as asked: a rewrite may
+  lose a nuance of the question, and the LLM reads it in the light of the
+  conversation instead. The exchanges come first, as context, so that the
+  question stays last, as without a history. The system prompt is a
+  second constant, `CONVERSATION_ANSWER_INSTRUCTIONS`, built on
+  `ANSWER_INSTRUCTIONS`, which is unchanged without a history: it says
+  how the exchanges are laid out and ordered, and that a
+  `<previous-answer>` is no source — the answer comes only from the
+  extracts and titles, as before.
 
 ## Open questions
 
@@ -341,8 +354,8 @@ Each one is settled before the feature that needs its answer.
   given to the LLM, and the project bounds it — the last few exchanges,
   say. Exchanges dropped beyond that bound are lost to the rewrite.
   Whether the package offers to compact or summarize them instead, and
-  when: once feature 14 puts the history in the answer prompt too, a long
-  history costs on every call.
+  when: since feature 14 the history is in the answer prompt too, so a
+  long history costs twice on every question that finds chunks.
 
 ## Features
 
@@ -398,11 +411,12 @@ Provisional: the design pass may reorder, split or merge them.
 - [x] **13. Follow-up questions.** `answer()` takes a `history` of
   `Exchange`s; with one, the LLM first rewrites the question to stand on
   its own, in its language, and the chunks are searched near that rewrite,
-  which the `Answer` keeps as `search_question`. The answer prompt holds
-  the rewrite alone.
-- [ ] **14. Conversation history in the answer.** The answer prompt holds
+  which the `Answer` keeps as `search_question`. The answer prompt held
+  the rewrite alone until feature 14.
+- [x] **14. Conversation history in the answer.** The answer prompt holds
   the history and the question as asked, beside the chunks found for the
-  rewrite, so the LLM can answer within the conversation.
+  search question, so the LLM can answer within the conversation (see
+  "Decisions").
 
 ## Not planned here
 
