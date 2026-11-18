@@ -38,7 +38,10 @@ ANSWER_INSTRUCTIONS = (
     "and do not copy any tag. "
     "Answer in the language of the question."
 )
-
+CONVERSATION_ANSWER_INSTRUCTIONS = (
+    f"{ANSWER_INSTRUCTIONS} "
+    "The question was rewritten from a conversation: answer the rewritten question."
+)
 
 REWRITE_INSTRUCTIONS = (
     f"Each <{EXCHANGE_ELEMENT}> holds a <{PREVIOUS_QUESTION_ELEMENT}> "
@@ -125,10 +128,9 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     )
     if not chunks:
         return None
+    instructions = CONVERSATION_ANSWER_INSTRUCTIONS if history else ANSWER_INSTRUCTIONS
     return Answer(
-        text=llm.complete(
-            _build_prompt(search_question, chunks), system=ANSWER_INSTRUCTIONS
-        ),
+        text=llm.complete(_build_prompt(search_question, chunks), system=instructions),
         chunks=tuple(chunks),
         search_question=search_question,
     )
