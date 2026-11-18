@@ -928,6 +928,19 @@ def test_answer_with_history_gives_the_answer_one_question_element_as_asked(
 
 
 @pytest.mark.django_db
+def test_answer_with_history_gives_the_answer_a_prompt_without_the_rewrite(
+    settings: "Settings",
+) -> None:
+    llm_calls = llm_calls_answering_the_follow_up(settings, [WEEKDAY_HOURS_EXCHANGE])
+
+    _rewrite_call, (answer_prompt, answer_system) = llm_calls
+    assert answer_system == CONVERSATION_ANSWER_INSTRUCTIONS
+    # The rewrite only serves the search: neither the exchange, the chunk nor
+    # the question asked holds its text, so only the rewrite could bring it.
+    assert FOLLOW_UP_REWRITE not in answer_prompt
+
+
+@pytest.mark.django_db
 def test_answer_with_history_gives_the_answer_the_exchange_before_the_documents(
     settings: "Settings",
 ) -> None:
