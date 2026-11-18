@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from html import escape
+from itertools import chain
 
 from django_minimal_rag.llm import LLM, get_llm
 from django_minimal_rag.retrieval import (
@@ -140,11 +141,9 @@ def answer(  # noqa: PLR0913 - keyword-only options of one public entry point
     )
     if not chunks:
         return None
-    instructions = CONVERSATION_ANSWER_INSTRUCTIONS if history else ANSWER_INSTRUCTIONS
+    prompt, instructions = _answer_request(question, chunks, history)
     return Answer(
-        text=llm.complete(
-            _build_prompt(question, chunks, history), system=instructions
-        ),
+        text=llm.complete(prompt, system=instructions),
         chunks=tuple(chunks),
         search_question=search_question,
     )
@@ -173,11 +172,22 @@ def _citation(chunk: RetrievedChunk) -> Citation:
     return Citation(title=chunk.title, url=chunk.url, source_key=chunk.source_key)
 
 
+def _answer_request(
+    question: str, chunks: Sequence[RetrievedChunk], history: Sequence[Exchange]
+) -> tuple[str, str]:
+    """Return the answer call's prompt and the instructions that describe it.
+
+    Both are chosen together, so the instructions always match the prompt.
+    """
+    instructions = CONVERSATION_ANSWER_INSTRUCTIONS if history else ANSWER_INSTRUCTIONS
+    return _build_prompt(question, chunks, history), instructions
+
+
 def _build_prompt(
     question: str, chunks: Sequence[RetrievedChunk], history: Sequence[Exchange]
 ) -> str:
     """Return each exchange, then each document as an element, then ``question``."""
-    return _with_question([*_exchanges(history), *_documents(chunks)], question)
+    return _with_question(chain(_exchanges(history), _documents(chunks)), question)
 
 
 def _build_rewrite_prompt(question: str, history: Sequence[Exchange]) -> str:
